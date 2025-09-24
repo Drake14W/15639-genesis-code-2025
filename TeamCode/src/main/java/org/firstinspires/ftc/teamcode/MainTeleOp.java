@@ -87,7 +87,7 @@ public class MainTeleOp extends LinearOpMode {
 
     //Globals for movement
     double LONG_LAT_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
-    double LONG_LAT_ANGULAR_DEADZONE = 5;   //In degrees
+    double LONG_LAT_ANGULAR_DEADZONE = 2;   //In degrees
     double ROTATION_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
     double ROTATION_ANGULAR_DEADZONE = 0.0; //In degrees
     double ROTATION_SPEED = 0.75;
@@ -102,10 +102,14 @@ public class MainTeleOp extends LinearOpMode {
     byte ON_BITMASK = (byte) 0b10000000;
 
     private boolean check_mask(String key) {
+        byte bit_mask_result;
         for (String iter_key : action_map.keySet()) {
             if (iter_key != key) {
-                if ((action_map.get(iter_key) & action_map.get(iter_key)) > 0) {
-                    return false;
+                if (action_map.get(iter_key) < 0) {
+                    bit_mask_result = (byte) (action_map.get(iter_key) & action_map.get(iter_key));
+                    if ((bit_mask_result == 0) || (bit_mask_result == -127)) {
+                        return false;
+                    }
                 }
             }
         }
@@ -146,7 +150,7 @@ public class MainTeleOp extends LinearOpMode {
         motors.get("front_right").setDirection(DcMotor.Direction.FORWARD);
         motors.get("back_right").setDirection(DcMotor.Direction.FORWARD);
 
-        motors.get("intake").setDirection(DcMotorSimple.Direction.FORWARD);
+        motors.get("intake").setDirection(DcMotorSimple.Direction.REVERSE);
 
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
@@ -193,7 +197,7 @@ public class MainTeleOp extends LinearOpMode {
 
             //Controls latitudinal and longitudinal movement with left stick
             //Vertical movement (up is negative on the joystick)
-            axial = custom_gamepad_1.get_left_stick_x(LONG_LAT_ANGULAR_DEADZONE, LONG_LAT_RADIAL_DEADZONE);
+            axial = custom_gamepad_1.get_left_stick_y(LONG_LAT_ANGULAR_DEADZONE, LONG_LAT_RADIAL_DEADZONE);
             //Horizontal movement
             lateral = custom_gamepad_1.get_left_stick_x(LONG_LAT_ANGULAR_DEADZONE, LONG_LAT_RADIAL_DEADZONE);
             //Rotation calculation
@@ -202,44 +206,43 @@ public class MainTeleOp extends LinearOpMode {
 
             //Update manual movement state
             if ((Math.abs(axial) + Math.abs(lateral) + Math.abs(trigger_yaw) + Math.abs(stick_yaw)) > 0) {
-                if (!check_mask("manual_movement")) {
+                if (check_mask("manual_movement")) {
                     //Set the manual movement byte to on
                     action_map.put("manual_movement", (byte) (action_map.get("manual_movement") | ON_BITMASK));
-                }
-
-                if (Math.abs(trigger_yaw) > 0) {
-                    if (!check_mask("trigger_rotation")) {
+                    if (Math.abs(trigger_yaw) > 0) {
                         //Set the trigger movement byte to on
                         action_map.put("trigger_rotation", (byte) (action_map.get("trigger_rotation") | ON_BITMASK));
-                    }
-                } else if (Math.abs(stick_yaw) > 0) {
-                    if (!check_mask("stick_rotation")) {
+                        action_map.put("stick_rotation", (byte) (action_map.get("stick_rotation") & (~ON_BITMASK)));
+                    } else if (Math.abs(stick_yaw) > 0) {
                         //Set the trigger movement byte to on
                         action_map.put("stick_rotation", (byte) (action_map.get("stick_rotation") | ON_BITMASK));
+                        action_map.put("trigger_rotation", (byte) (action_map.get("trigger_rotation") & (~ON_BITMASK)));
                     }
                 }
-            } else {
-                //Set the manual movement byte to off
-                action_map.put("manual_movement", (byte) (action_map.get("manual_movement") & (~ON_BITMASK)));
             }
 
             //Manual intake control
-            if (!check_mask("manual_intake")) {
-                if (custom_gamepad_2.get_right_stick_x(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE) != 0) {
-                    action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
-                } else {
-                    action_map.put("manual_intake", (byte) (action_map.get("manual_intake") & (~ON_BITMASK)));
-                }
+            if (check_mask("manual_intake")) {
+                action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
             }
 
+            telemetry.addData("Axial", axial);
+            telemetry.addData("Lateral", lateral);
+            telemetry.addData("Yaw", stick_yaw);
+            telemetry.addData("Manual Movement", action_map.get("manual_movement"));
+            telemetry.update();
+
             //Execute state actions
-            if (((byte) action_map.get("manual_movement") & ON_BITMASK) > 0) {
+            //This checks if msb is set
+            if (action_map.get("manual_movement") < 0) {
                 //Check which yaw we're using (if any)
-                if (!check_mask("trigger_rotation")) {
+                if (action_map.get("trigger_rotation") < 0) {
                     yaw = trigger_yaw;
-                } else if (!check_mask("stick_rotation")) {
+                }
+                else if (action_map.get("stick_rotation") < 0) {
                     yaw = stick_yaw;
-                } else {
+                }
+                else {
                     yaw = 0;
                 }
 
@@ -249,8 +252,8 @@ public class MainTeleOp extends LinearOpMode {
                 motor_powers.put("back_left", axial - lateral + yaw);
                 motor_powers.put("back_right", axial + lateral - yaw);
             }
-            if (((byte) action_map.get("manual_intake") & ON_BITMASK) > 0) {
-                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_x(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
+            if (action_map.get("manual_intake") < 0) {
+                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
             }
 
             //Execute powers
