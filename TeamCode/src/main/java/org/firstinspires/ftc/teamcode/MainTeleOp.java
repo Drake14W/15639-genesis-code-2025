@@ -97,6 +97,7 @@ public class MainTeleOp extends LinearOpMode {
     double INTAKE_SPEED = 1.0;
     double INTAKE_ANGULAR_DEADZONE = 0.0;
     double INTAKE_RADIAL_DEADZONE = 0.05;
+    double FEEDER_SPEED = 1.0;
 
     //Used to set bytes to "on"
     byte ON_BITMASK = (byte) 0b10000000;
@@ -125,6 +126,7 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("trigger_rotation", (byte) 0b00000010);
         action_map.put("stick_rotation", (byte) 0b00000010);
         action_map.put("manual_intake", (byte) 0b00000100);
+        action_map.put("feeder", (byte) 0b00001000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -137,6 +139,7 @@ public class MainTeleOp extends LinearOpMode {
         //Create and assign map entries for all servos
 
         //Create and assign map entries for all CRServos
+        crservos.put("feeder", hardwareMap.get(CRServo.class, "feeder_crservo"));
 
         //Reset encoders
         for (String key : motors.keySet()) {
@@ -152,6 +155,8 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.get("intake").setDirection(DcMotorSimple.Direction.REVERSE);
 
+        //Set direction of servos
+
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
         custom_gamepad_2 = new CustomGamepad(gamepad2);
@@ -161,9 +166,7 @@ public class MainTeleOp extends LinearOpMode {
             motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             ;
         }
-
-        //Set direction of servos
-
+        //Funny Comment
         //This data is displayed on the driver hub console
         telemetry.addData("Status", "Initialized");
         telemetry.update();
@@ -185,6 +188,7 @@ public class MainTeleOp extends LinearOpMode {
         //Settings for servos
 
         //CRServos Powers
+        crservo_powers.put("feeder", 0.0);
 
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
@@ -226,10 +230,15 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
             }
 
+            if (check_mask("feeder")) {
+                action_map.put("feeder", (byte) (action_map.get("feeder") | ON_BITMASK));
+            }
+
             telemetry.addData("Axial", axial);
             telemetry.addData("Lateral", lateral);
             telemetry.addData("Yaw", stick_yaw);
             telemetry.addData("Manual Movement", action_map.get("manual_movement"));
+            telemetry.addData("Feeder", action_map.get("feeder"));
             telemetry.update();
 
             //Execute state actions
@@ -254,6 +263,10 @@ public class MainTeleOp extends LinearOpMode {
             }
             if (action_map.get("manual_intake") < 0) {
                 motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
+            }
+
+            if (action_map.get("feeder") < 0) {
+                crservo_powers.put("feeder", FEEDER_SPEED);
             }
 
             //Execute powers
