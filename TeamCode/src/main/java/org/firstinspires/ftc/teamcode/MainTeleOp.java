@@ -97,6 +97,9 @@ public class MainTeleOp extends LinearOpMode {
     double INTAKE_SPEED = 1.0;
     double INTAKE_ANGULAR_DEADZONE = 0.0;
     double INTAKE_RADIAL_DEADZONE = 0.05;
+    double FLYWHEEL_SPEED = 1.0;
+    double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
+    double FLYWHEEL_RADIAL_DEADZONE = 0.05;
 
     //Used to set bytes to "on"
     byte ON_BITMASK = (byte) 0b10000000;
@@ -125,6 +128,7 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("trigger_rotation", (byte) 0b00000010);
         action_map.put("stick_rotation", (byte) 0b00000010);
         action_map.put("manual_intake", (byte) 0b00000100);
+        action_map.put("flywheel", (byte) 0b00001000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -133,6 +137,8 @@ public class MainTeleOp extends LinearOpMode {
         motors.put("back_right", hardwareMap.get(DcMotor.class, "back_right_motor"));
 
         motors.put("intake", hardwareMap.get(DcMotor.class, "intake_motor"));
+
+        motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor"));
 
         //Create and assign map entries for all servos
 
@@ -152,6 +158,10 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.get("intake").setDirection(DcMotorSimple.Direction.REVERSE);
 
+        motors.get("flywheel").setDirection(DcMotorSimple.Direction.FORWARD);
+
+        //Set direction of servos
+
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
         custom_gamepad_2 = new CustomGamepad(gamepad2);
@@ -161,9 +171,7 @@ public class MainTeleOp extends LinearOpMode {
             motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             ;
         }
-
-        //Set direction of servos
-
+        //Funny Comment
         //This data is displayed on the driver hub console
         telemetry.addData("Status", "Initialized");
         telemetry.update();
@@ -181,6 +189,7 @@ public class MainTeleOp extends LinearOpMode {
         motor_powers.put("back_right", 0.0);
 
         motor_powers.put("intake", 0.0);
+        motor_powers.put("flywheel", 0.0);
 
         //Settings for servos
 
@@ -226,10 +235,16 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
             }
 
+            //Manual flywheel control
+            if (check_mask("flywheel")) {
+                action_map.put("flywheel", (byte) (action_map.get("flywheel") | ON_BITMASK));
+            }
+
             telemetry.addData("Axial", axial);
             telemetry.addData("Lateral", lateral);
             telemetry.addData("Yaw", stick_yaw);
             telemetry.addData("Manual Movement", action_map.get("manual_movement"));
+            telemetry.addData("Flywheel", action_map.get("flywheel"));
             telemetry.update();
 
             //Execute state actions
@@ -252,8 +267,15 @@ public class MainTeleOp extends LinearOpMode {
                 motor_powers.put("back_left", axial - lateral + yaw);
                 motor_powers.put("back_right", axial + lateral - yaw);
             }
+
+            //Execute intake
             if (action_map.get("manual_intake") < 0) {
                 motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
+            }
+
+            //execute flywheel
+            if (action_map.get("flywheel") < 0) {
+                motor_powers.put("flywheel", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
             }
 
             //Execute powers
