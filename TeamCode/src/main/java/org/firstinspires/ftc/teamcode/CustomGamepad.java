@@ -149,55 +149,52 @@ public class CustomGamepad {
     //Angular deadzone in degrees, represents total angle in which it gets locked (not half)
     public double get_left_stick_x(double angular_deadzone, double radial_deadzone) {
         //Check radial deadzone
-        double temp_left_stick_x = left_stick_x;
-        double temp_left_stick_y = left_stick_y;
-        if (Math.sqrt(Math.pow(temp_left_stick_x, 2) + Math.pow(temp_left_stick_y, 2)) < radial_deadzone) {
-            return 0;
-        }
+        double temp_left_stick_x;
+        double temp_left_stick_y;
+        temp_left_stick_x = (left_stick_x > radial_deadzone) ? left_stick_x : 0.0;
+        temp_left_stick_y = (left_stick_y > radial_deadzone) ? left_stick_y : 0.0;
 
         //Check angular deadzone
         double angular_deadzone_radians = Math.toRadians(angular_deadzone);
         double angle = Math.atan2(temp_left_stick_y, temp_left_stick_x);
         if ((angle < ((Math.PI/2) + angular_deadzone_radians/2)) && (angle > ((Math.PI/2) - angular_deadzone_radians/2))) {
             //In top angular deadzone
-            return 0;
+            temp_left_stick_x = 0;
         }
-        if ((angle < ((0 - Math.PI/2) + angular_deadzone_radians/2)) && (angle > ((0 - Math.PI/2) - angular_deadzone_radians/2))) {
+        else if ((angle < ((0 - Math.PI/2) + angular_deadzone_radians/2)) && (angle > ((0 - Math.PI/2) - angular_deadzone_radians/2))) {
             //In bottom angular deadzone
-            return 0;
+            temp_left_stick_x = 0;
         }
 
         return temp_left_stick_x;
     }
     public double get_left_stick_y(double angular_deadzone, double radial_deadzone) {
         //Check radial deadzone
-        double temp_left_stick_x = left_stick_x;
-        double temp_left_stick_y = left_stick_y;
-        if (Math.sqrt(Math.pow(temp_left_stick_x, 2) + Math.pow(temp_left_stick_y, 2)) < radial_deadzone) {
-            return 0;
-        }
+        double temp_left_stick_x;
+        double temp_left_stick_y;
+        temp_left_stick_x = (left_stick_x > radial_deadzone) ? left_stick_x : 0.0;
+        temp_left_stick_y = (left_stick_y > radial_deadzone) ? left_stick_y : 0.0;
 
         //Check angular deadzone
         double angular_deadzone_radians = Math.toRadians(angular_deadzone);
         double angle = Math.atan2(temp_left_stick_y, temp_left_stick_x);
         if ((angle < (0 + angular_deadzone_radians/2)) && (angle > (0 - angular_deadzone_radians/2))) {
             //In right angular deadzone
-            return 0;
+            temp_left_stick_y = 0;
         }
-        if ((angle > ((Math.PI) - angular_deadzone_radians/2)) || (angle < ((0 - Math.PI) + angular_deadzone_radians/2))) {
+        else if ((angle < ((Math.PI) + angular_deadzone_radians/2)) && (angle > ((0 - Math.PI) - angular_deadzone_radians/2))) {
             //In left angular deadzone
-            return 0;
+            temp_left_stick_y = 0;
         }
 
         return temp_left_stick_y;
     }
     public double get_right_stick_x(double angular_deadzone, double radial_deadzone) {
         //Check radial deadzone
-        double temp_right_stick_x = right_stick_x;
-        double temp_right_stick_y = right_stick_y;
-        if (Math.sqrt(Math.pow(temp_right_stick_x, 2) + Math.pow(temp_right_stick_y, 2)) < radial_deadzone) {
-            return 0;
-        }
+        double temp_right_stick_x;
+        double temp_right_stick_y;
+        temp_right_stick_x = (right_stick_x > radial_deadzone) ? right_stick_x : 0.0;
+        temp_right_stick_y = (right_stick_y > radial_deadzone) ? right_stick_y : 0.0;
 
         //Check angular deadzone
         double angular_deadzone_radians = Math.toRadians(angular_deadzone);
@@ -215,22 +212,21 @@ public class CustomGamepad {
     }
     public double get_right_stick_y(double angular_deadzone, double radial_deadzone) {
         //Check radial deadzone
-        double temp_right_stick_x = right_stick_x;
-        double temp_right_stick_y = right_stick_y;
-        if (Math.sqrt(Math.pow(temp_right_stick_x, 2) + Math.pow(temp_right_stick_y, 2)) < radial_deadzone) {
-            return 0;
-        }
+        double temp_right_stick_x;
+        double temp_right_stick_y;
+        temp_right_stick_x = (right_stick_x > radial_deadzone) ? right_stick_x : 0.0;
+        temp_right_stick_y = (right_stick_y > radial_deadzone) ? right_stick_y : 0.0;
 
         //Check angular deadzone
         double angular_deadzone_radians = Math.toRadians(angular_deadzone);
         double angle = Math.atan2(temp_right_stick_y, temp_right_stick_x);
         if ((angle < (0 + angular_deadzone_radians/2)) && (angle > (0 - angular_deadzone_radians/2))) {
             //In right angular deadzone
-            return 0;
+            temp_right_stick_y = 0;
         }
-        if ((angle < ((Math.PI) - angular_deadzone_radians/2)) && (angle < ((0 - Math.PI) + angular_deadzone_radians/2))) {
+        else if ((angle < ((Math.PI) + angular_deadzone_radians/2)) && (angle > ((0 - Math.PI) - angular_deadzone_radians/2))) {
             //In right angular deadzone
-            return 0;
+            temp_right_stick_y = 0;
         }
 
         return temp_right_stick_y;
