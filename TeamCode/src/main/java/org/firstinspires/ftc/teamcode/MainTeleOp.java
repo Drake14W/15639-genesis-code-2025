@@ -100,6 +100,7 @@ public class MainTeleOp extends LinearOpMode {
     double FLYWHEEL_SPEED = 1.0;
     double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     double FLYWHEEL_RADIAL_DEADZONE = 0.05;
+    double FEEDER_SPEED = 1.0;
 
     //Used to set bytes to "on"
     byte ON_BITMASK = (byte) 0b10000000;
@@ -128,7 +129,8 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("trigger_rotation", (byte) 0b00000010);
         action_map.put("stick_rotation", (byte) 0b00000010);
         action_map.put("manual_intake", (byte) 0b00000100);
-        action_map.put("flywheel", (byte) 0b00001000);
+        //action_map.put("feeder", (byte) 0b00001000);
+        action_map.put("flywheel", (byte) 0b00010000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -143,6 +145,7 @@ public class MainTeleOp extends LinearOpMode {
         //Create and assign map entries for all servos
 
         //Create and assign map entries for all CRServos
+        //crservos.put("feeder", hardwareMap.get(CRServo.class, "feeder_crservo"));
 
         //Reset encoders
         for (String key : motors.keySet()) {
@@ -194,6 +197,7 @@ public class MainTeleOp extends LinearOpMode {
         //Settings for servos
 
         //CRServos Powers
+        //crservo_powers.put("feeder", 0.0);
 
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
@@ -240,11 +244,17 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("flywheel", (byte) (action_map.get("flywheel") | ON_BITMASK));
             }
 
+            //Manual feeder servo control
+            //if (check_mask("feeder")) {
+            //    action_map.put("feeder", (byte) (action_map.get("feeder") | ON_BITMASK));
+            //}
+
             telemetry.addData("Axial", axial);
             telemetry.addData("Lateral", lateral);
             telemetry.addData("Yaw", stick_yaw);
             telemetry.addData("Manual Movement", action_map.get("manual_movement"));
             telemetry.addData("Flywheel", action_map.get("flywheel"));
+            //telemetry.addData("Feeder", action_map.get("feeder"));
             telemetry.update();
 
             //Execute state actions
@@ -277,6 +287,11 @@ public class MainTeleOp extends LinearOpMode {
             if (action_map.get("flywheel") < 0) {
                 motor_powers.put("flywheel", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
             }
+
+            //TODO: map this to an actual input
+            //if (action_map.get("feeder") < 0) {
+            //    crservo_powers.put("feeder", FEEDER_SPEED);
+            //}
 
             //Execute powers
             for (String key : motor_powers.keySet()) {
