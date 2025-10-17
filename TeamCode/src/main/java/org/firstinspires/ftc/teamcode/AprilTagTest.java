@@ -63,9 +63,11 @@ public class AprilTagTest extends LinearOpMode {
                 telemetry.addData("pitch", tag.ftcPose.pitch);
                 telemetry.addData("range", tag.ftcPose.range);
                 telemetry.addData("elevation", tag.ftcPose.elevation);
+
+                telemetry.update();
             }
 
-        telemetry.update();
+
 
         }
 

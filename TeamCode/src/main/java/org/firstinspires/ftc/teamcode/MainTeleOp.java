@@ -138,7 +138,8 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.put("intake", hardwareMap.get(DcMotor.class, "intake_motor"));
 
-        motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor"));
+        motors.put("flywheel1", hardwareMap.get(DcMotor.class, "flywheel_motor1"));
+        motors.put("flywheel2", hardwareMap.get(DcMotor.class, "flywheel_motor2"));
 
         //Create and assign map entries for all servos
 
@@ -158,7 +159,8 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.get("intake").setDirection(DcMotorSimple.Direction.REVERSE);
 
-        motors.get("flywheel").setDirection(DcMotorSimple.Direction.FORWARD);
+        motors.get("flywheel1").setDirection(DcMotorSimple.Direction.REVERSE);
+        motors.get("flywheel2").setDirection(DcMotorSimple.Direction.FORWARD);
 
         //Set direction of servos
 
@@ -189,7 +191,8 @@ public class MainTeleOp extends LinearOpMode {
         motor_powers.put("back_right", 0.0);
 
         motor_powers.put("intake", 0.0);
-        motor_powers.put("flywheel", 0.0);
+        motor_powers.put("flywheel1", 0.0);
+        motor_powers.put("flywheel2", 0.0);
 
         //Settings for servos
 
@@ -275,7 +278,8 @@ public class MainTeleOp extends LinearOpMode {
 
             //execute flywheel
             if (action_map.get("flywheel") < 0) {
-                motor_powers.put("flywheel", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+                motor_powers.put("flywheel1", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+                motor_powers.put("flywheel2", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
             }
 
             //Execute powers
