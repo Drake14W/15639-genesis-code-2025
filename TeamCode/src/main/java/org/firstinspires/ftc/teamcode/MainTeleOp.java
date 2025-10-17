@@ -72,7 +72,7 @@ public class MainTeleOp extends LinearOpMode {
     //Level 0 (lsb):    General wheel control
     //Level 1:          Rotation control
     //Level 2:          Intake control
-    //Level 3:          Lorem ipsum
+    //Level 3:          Flywheel control
     //Level 4:          Lorem ipsum
     //Level 5:          Lorem ipsum
     //Level 6:          Lorem ipsum
