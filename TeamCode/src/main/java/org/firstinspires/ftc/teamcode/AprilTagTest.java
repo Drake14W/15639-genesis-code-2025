@@ -33,14 +33,20 @@ public class AprilTagTest extends LinearOpMode {
 
         //initializes the VisionPortal software
         VisionPortal visionPortal = new VisionPortal.Builder()
-                //this does something, check later
+                //Associates AprilTagProcessor with VisionPortal
                 .addProcessor(tagProcessor)
 
                 //declares the camera
                 .setCamera(hardwareMap.get(CameraName.class, "Webcam 1"))
 
-                //sets camera resolution; this can't be cranked or the ops may crash (current res taken from tutorial video & may be changed
-                .setCameraResolution(new Size(640, 480))
+                //stream format
+                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
+
+                //start live stream
+                .enableLiveView(true)
+
+                //sets camera resolution; turn down if performance issues
+                .setCameraResolution(new Size(1280, 720))
 
                 //as above
                 .build();
