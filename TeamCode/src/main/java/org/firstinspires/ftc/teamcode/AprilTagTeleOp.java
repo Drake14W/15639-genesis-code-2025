@@ -24,6 +24,8 @@ SOFTWARE.
 
 package org.firstinspires.ftc.teamcode;
 
+import android.util.Size;
+
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -32,7 +34,13 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+
 import java.util.HashMap;
+import java.lang.Math;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
 @TeleOp(name="AprilTagTeleOp", group="Linear OpMode")
@@ -119,6 +127,34 @@ public class AprilTagTeleOp extends LinearOpMode {
         return true;
     }
 
+    //Camera and AprilTag stuff
+    AprilTagProcessor tagProcessor;
+    VisionPortal visionPortal;
+    AprilTagDetection tag;
+    double tag_range;
+    double tag_elevation;
+    double tag_bearing;
+    final double BEARING_RANGE = 3; //We accept +/- 3 degrees when aiming
+    final double APRIL_TAG_ROTATION_SPEED = 0.35;
+
+    //Movement values for aimbot (april tag) macro
+    double aimbot_macro_yaw;
+    double aimbot_flywheel_power;
+    double aimbot_flywheel_time_finished;
+    final double AIMBOT_FLYWHEEL_RUN_TIME = 1000; //In ms
+
+    //Calculation values for aimbot
+    double exit_velocity;
+    final double MAX_FLYWHEEL_RPM = 6000;
+    final double FLYWHEEL_RADIUS = 4; //In cm
+    final double GRAVITY = 9.81;
+    final double RAMP_HEIGHT = 25; //In cm
+    final double BUCKET_HEIGHT = 98.45;
+    final double CAMERA_HEIGHT = 45;
+    final double EXIT_HEIGHT = 45;
+    final double BUCKET_WIDTH = 50; //In cm
+    final double INCHES_TO_CM = 2.54;
+
     //We have to override this function since it has already been defined in the parent class LinearOpMode
     @Override
     public void runOpMode() {
@@ -127,7 +163,7 @@ public class AprilTagTeleOp extends LinearOpMode {
         action_map.put("trigger_rotation", (byte) 0b00000010);
         action_map.put("stick_rotation", (byte) 0b00000010);
         action_map.put("manual_intake", (byte) 0b00000100);
-        action_map.put("flywheel", (byte) 0b00001000);
+        action_map.put("manual_flywheel", (byte) 0b00001000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -197,6 +233,32 @@ public class AprilTagTeleOp extends LinearOpMode {
 
         //CRServos Powers
 
+        //Initialize camera and april tag processing stuff
+        tagProcessor = new AprilTagProcessor.Builder()
+                .setDrawTagID(true)
+                .setDrawAxes(true)
+                .setDrawCubeProjection(true)
+                .build();
+
+        visionPortal = new VisionPortal.Builder()
+                .addProcessor(tagProcessor)
+                //declares the camera
+                .setCamera(hardwareMap.get(CameraName.class, "Webcam 1"))
+                //stream format
+                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
+                //start live stream
+                //.enableLiveView(true)
+                //sets camera resolution; turn down if performance issues
+                .setCameraResolution(new Size(640, 480))
+                //as above
+                .build();
+
+        //Disable processor to start (conserve bandwidth)
+        visionPortal.setProcessorEnabled(tagProcessor, false);
+
+        //Macro action map entries
+        action_map.put("aimbot", (byte) 0b00001001);
+
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
             //Update gamepad input
@@ -238,16 +300,56 @@ public class AprilTagTeleOp extends LinearOpMode {
             }
 
             //Manual flywheel control
-            if (check_mask("flywheel")) {
-                action_map.put("flywheel", (byte) (action_map.get("flywheel") | ON_BITMASK));
+            if (check_mask("manual_flywheel")) {
+                action_map.put("manual_flywheel", (byte) (action_map.get("flywheel") | ON_BITMASK));
             }
 
-            telemetry.addData("Axial", axial);
-            telemetry.addData("Lateral", lateral);
-            telemetry.addData("Yaw", stick_yaw);
-            telemetry.addData("Manual Movement", action_map.get("manual_movement"));
-            telemetry.addData("Flywheel", action_map.get("flywheel"));
-            telemetry.update();
+            //Check for aimbot macro
+            if (custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) {
+                //If this is fresh
+                if (action_map.get("aimbot") > 0) {
+                    action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
+                    aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                }
+
+                //Check if we're done
+                if (runtime.milliseconds() > aimbot_flywheel_time_finished) {
+                    action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
+                }
+                else {
+                    //Turn on image processor
+                    visionPortal.setProcessorEnabled(tagProcessor, true);
+
+                    //Scan the tag
+                    AprilTagDetection tag = tagProcessor.getFreshDetections().get(0);
+                    tag_range = tag.ftcPose.range * INCHES_TO_CM;
+                    tag_bearing = Math.toRadians(tag.ftcPose.bearing);
+                    tag_elevation = Math.atan((Math.sin(Math.toRadians(tag.ftcPose.elevation)) + (RAMP_HEIGHT-CAMERA_HEIGHT))/Math.cos(Math.toRadians(tag.ftcPose.elevation)));
+
+                    //We're rotated too far left
+                    if (tag_bearing > BEARING_RANGE) {
+                        aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
+                        aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                        aimbot_flywheel_power = 0;
+                    }
+                    //We're rotated too far right
+                    else if (tag_bearing < -BEARING_RANGE) {
+                        aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
+                        aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                        aimbot_flywheel_power = 0;
+                    }
+                    //Shoot
+                    else {
+                        aimbot_macro_yaw = 0;
+
+                        //Calculate exit velocity we need
+                        exit_velocity = (tag_range * Math.cos(tag_elevation) + BUCKET_WIDTH) * Math.sqrt(GRAVITY/(2 * Math.pow(Math.cos(tag_elevation), 2) * ((tag_range * Math.cos(tag_elevation) + BUCKET_WIDTH) * Math.tan(tag_elevation) - (BUCKET_HEIGHT-RAMP_HEIGHT))));
+
+                        //Calculate flywheel motor power
+                        aimbot_flywheel_power = Math.sqrt((Math.PI*Math.pow(exit_velocity, 2) + GRAVITY*RAMP_HEIGHT)/90*FLYWHEEL_RADIUS)/MAX_FLYWHEEL_RPM;
+                    }
+                }
+            }
 
             //Execute state actions
             //This checks if msb is set
@@ -275,10 +377,21 @@ public class AprilTagTeleOp extends LinearOpMode {
                 motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
             }
 
-            //execute flywheel
-            if (action_map.get("flywheel") < 0) {
+            //execute Flywheel
+            if (action_map.get("manual_flywheel") < 0) {
                 motor_powers.put("flywheel1", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
                 motor_powers.put("flywheel2", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+            }
+
+            //Execute aimbot macro
+            if (action_map.get("aimbot") < 0) {
+                motor_powers.put("front_left", yaw);
+                motor_powers.put("front_right", -yaw);
+                motor_powers.put("back_left", yaw);
+                motor_powers.put("back_right", -yaw);
+
+                motor_powers.put("flywheel1", aimbot_flywheel_power);
+                motor_powers.put("flywheel2", aimbot_flywheel_power);
             }
 
             //Execute powers
