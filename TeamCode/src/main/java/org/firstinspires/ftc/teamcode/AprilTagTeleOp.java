@@ -310,16 +310,19 @@ public class AprilTagTeleOp extends LinearOpMode {
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
                     aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+
+                    //Turn on image processor
+                    visionPortal.setProcessorEnabled(tagProcessor, true);
                 }
 
                 //Check if we're done
                 if (runtime.milliseconds() > aimbot_flywheel_time_finished) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
+
+                    //Turn off image processor
+                    visionPortal.setProcessorEnabled(tagProcessor, false);
                 }
                 else {
-                    //Turn on image processor
-                    visionPortal.setProcessorEnabled(tagProcessor, true);
-
                     //Scan the tag
                     AprilTagDetection tag = tagProcessor.getFreshDetections().get(0);
                     tag_range = tag.ftcPose.range * INCHES_TO_CM;
