@@ -41,29 +41,45 @@ public class CustomGamepad {
     //Update controller inputs
     public void update() {
         //Lettered updates
+        a_just_pressed = false;
         if (gamepad.a) {
             if (!a) {
                 a_just_pressed = true;
             }
             a = true;
         }
+        else {
+            a = false;
+        }
+        b_just_pressed = false;
         if (gamepad.b) {
             if (!b) {
                 b_just_pressed = true;
             }
             b = true;
         }
+        else {
+            b = false;
+        }
+        y_just_pressed = false;
         if (gamepad.y) {
             if (!y) {
                 y_just_pressed = true;
             }
             y = true;
         }
+        else {
+            y = false;
+        }
+        x_just_pressed = false;
         if (gamepad.x) {
             if (!x) {
                 x_just_pressed = true;
             }
             x = true;
+        }
+        else {
+            x = false;
         }
 
         //Stick updates
@@ -77,43 +93,67 @@ public class CustomGamepad {
         right_trigger = gamepad.right_trigger;
 
         //Bumper updates
+        left_bumper_just_pressed = false;
         if (gamepad.left_bumper) {
             if (!left_bumper) {
                 left_bumper_just_pressed = true;
             }
             left_bumper = true;
         }
+        else {
+            left_bumper = false;
+        }
+        right_bumper_just_pressed = false;
         if (gamepad.right_bumper) {
             if (!right_bumper) {
                 right_bumper_just_pressed = true;
             }
             right_bumper = true;
         }
+        else {
+            right_bumper = false;
+        }
 
         //D-pad updates
+        dpad_up_just_pressed = false;
         if (gamepad.dpad_up) {
             if (!dpad_up) {
                 dpad_up_just_pressed = true;
             }
             dpad_up = true;
         }
+        else {
+            dpad_up = false;
+        }
+        dpad_down_just_pressed = false;
         if (gamepad.dpad_down) {
             if (!dpad_down) {
                 dpad_down_just_pressed = true;
             }
             dpad_down = true;
         }
+        else {
+            dpad_down = false;
+        }
+        dpad_left_just_pressed = false;
         if (gamepad.dpad_left) {
             if (!dpad_left) {
                 dpad_left_just_pressed = true;
             }
             dpad_left = true;
         }
+        else {
+            dpad_left = false;
+        }
+        dpad_right_just_pressed = false;
         if (gamepad.dpad_right) {
             if (!dpad_right) {
                 dpad_right_just_pressed = true;
             }
             dpad_right = true;
+        }
+        else {
+            dpad_right = false;
         }
     }
 
