@@ -34,15 +34,22 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
+
 import java.util.HashMap;
 import java.lang.Math;
+import java.util.concurrent.TimeUnit;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
 @TeleOp(name="AprilTagTeleOp", group="Linear OpMode")
@@ -82,7 +89,7 @@ public class AprilTagTeleOp extends LinearOpMode {
     //Level 1:          Rotation control
     //Level 2:          Intake control
     //Level 3:          Flywheel control
-    //Level 4:          Lorem ipsum
+    //Level 4:          Intake servo control
     //Level 5:          Lorem ipsum
     //Level 6:          Lorem ipsum
     //Level 7:          On/Off
@@ -100,15 +107,16 @@ public class AprilTagTeleOp extends LinearOpMode {
     double ROTATION_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
     double ROTATION_ANGULAR_DEADZONE = 0.0; //In degrees
     double ROTATION_SPEED = 0.75;
-    double MOVEMENT_SPEED = 0.5;
+    double MOVEMENT_SPEED = 1.0;
 
     //Other assorted globals
     double INTAKE_SPEED = 1.0;
     double INTAKE_ANGULAR_DEADZONE = 0.0;
     double INTAKE_RADIAL_DEADZONE = 0.05;
-    double FLYWHEEL_SPEED = 1.0;
+    double INTAKE_SERVO_SPEED = 1.0;
+    double FLYWHEEL_SPEED = 0.25;
     double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
-    double FLYWHEEL_RADIAL_DEADZONE = 0.05;
+    double FLYWHEEL_RADIAL_DEADZONE = 0.20;
 
     //Used to set bytes to "on"
     byte ON_BITMASK = (byte) 0b10000000;
@@ -147,16 +155,20 @@ public class AprilTagTeleOp extends LinearOpMode {
 
     //Calculation values for aimbot
     double exit_velocity;
-    final double MAX_FLYWHEEL_RPM = 6000;
-    final double FLYWHEEL_RADIUS = 4; //In cm
+    final double MAX_FLYWHEEL_RPM = 18000;
     final double GRAVITY = 9.81;
-    final double RAMP_HEIGHT = 35; //In cm
     final double BUCKET_HEIGHT = 98.45;
-    final double CAMERA_HEIGHT = 37;
-    final double CAMERA_HORIZONTAL_OFFSET = 10; //To the left of the launcher is positive
-    final double CAMERA_ANGLE = 5*(Math.PI/180); //5 deg
-    final double EXIT_HEIGHT = 45;
+    final double CAMERA_HEIGHT = 25;
+    final double CAMERA_X_OFFSET = 15; //To the left of the launcher is positive
+    final double CAMERA_Z_OFFSET = 32; //Forward from the launcher is positive
+    final double CAMERA_YAW = 0; //Left to right angle (positive is left)
+    final double CAMERA_PITCH = 22; //Up-down angle (positive is up)
+    final double CAMERA_ROLL = 0; //Up-down rotation angle (like this for positive: ↓---↑)
+    final double EXIT_HEIGHT = 25;
+    final double EXIT_ANGLE = Math.toRadians(50);
+    final double BALL_RADIUS = 6.25;
     final double BUCKET_WIDTH = 37; //In cm
+    final double MAGIC_FLYWHEEL_NUMBER = 90;
 
     //We have to override this function since it has already been defined in the parent class LinearOpMode
     @Override
@@ -167,6 +179,7 @@ public class AprilTagTeleOp extends LinearOpMode {
         action_map.put("stick_rotation", (byte) 0b00000010);
         action_map.put("manual_intake", (byte) 0b00000100);
         action_map.put("manual_flywheel", (byte) 0b00001000);
+        action_map.put("manual_intake_servo", (byte) 0b00010000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -176,12 +189,12 @@ public class AprilTagTeleOp extends LinearOpMode {
 
         motors.put("intake", hardwareMap.get(DcMotor.class, "intake_motor"));
 
-        motors.put("flywheel1", hardwareMap.get(DcMotor.class, "flywheel_motor1"));
-        motors.put("flywheel2", hardwareMap.get(DcMotor.class, "flywheel_motor2"));
+        motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor1"));
 
         //Create and assign map entries for all servos
 
         //Create and assign map entries for all CRServos
+        crservos.put("intake_servo", hardwareMap.get(CRServo.class, "intake_servo"));
 
         //Reset encoders
         for (String key : motors.keySet()) {
@@ -197,10 +210,10 @@ public class AprilTagTeleOp extends LinearOpMode {
 
         motors.get("intake").setDirection(DcMotorSimple.Direction.REVERSE);
 
-        motors.get("flywheel1").setDirection(DcMotorSimple.Direction.REVERSE);
-        motors.get("flywheel2").setDirection(DcMotorSimple.Direction.FORWARD);
+        motors.get("flywheel").setDirection(DcMotorSimple.Direction.REVERSE);
 
         //Set direction of servos
+        crservos.get("intake_servo").setDirection(DcMotorSimple.Direction.FORWARD);
 
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
@@ -209,8 +222,63 @@ public class AprilTagTeleOp extends LinearOpMode {
         //Turn on the brakes for 0 power
         for (String key : motors.keySet()) {
             motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            ;
         }
+
+        //Motor powers
+        motor_powers.put("front_left", 0.0);
+        motor_powers.put("front_right", 0.0);
+        motor_powers.put("back_left", 0.0);
+        motor_powers.put("back_right", 0.0);
+
+        motor_powers.put("intake", 0.0);
+        motor_powers.put("flywheel", 0.0);
+
+        //Settings for servos
+
+        //CRServos Powers
+        crservo_powers.put("intake_servo", 0.0);
+
+        //Initialize camera and april tag processing stuff
+        Position cam_position = new Position(DistanceUnit.CM, CAMERA_X_OFFSET, CAMERA_HEIGHT-EXIT_HEIGHT, CAMERA_Z_OFFSET, 0);
+        YawPitchRollAngles yaw_pitch_roll_angles = new YawPitchRollAngles(AngleUnit.DEGREES, CAMERA_YAW, CAMERA_PITCH-90, CAMERA_ROLL, 0);
+        tagProcessor = new AprilTagProcessor.Builder()
+                .setDrawTagID(true)
+                .setDrawAxes(true)
+                .setDrawCubeProjection(true)
+                .setCameraPose(cam_position, yaw_pitch_roll_angles)
+                .setOutputUnits(DistanceUnit.CM, AngleUnit.RADIANS)
+                //For some fucking reason the camera isn't getting autodetected so we have to do it manually
+                .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
+                .build();
+
+        visionPortal = new VisionPortal.Builder()
+                .addProcessor(tagProcessor)
+                //declares the camera
+                .setCamera(hardwareMap.get(CameraName.class, "c920"))
+                //stream format
+                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
+                //sets camera resolution; turn down if performance issues
+                .setCameraResolution(new Size(640, 480))
+                //as above
+                .build();
+
+        //Disable processor to start (conserve bandwidth)
+        visionPortal.setProcessorEnabled(tagProcessor, false);
+
+        //Wait for camera to start up
+        while (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
+            sleep(10);
+        }
+
+        //Adjust camera settings
+        ExposureControl exposure_control = visionPortal.getCameraControl(ExposureControl.class);
+        exposure_control.setExposure(exposure_control.getMinExposure(TimeUnit.MILLISECONDS) + 1, TimeUnit.MILLISECONDS);
+        GainControl gain_control = visionPortal.getCameraControl(GainControl.class);
+        gain_control.setGain(gain_control.getMaxGain());
+
+        //Macro action map entries
+        action_map.put("aimbot", (byte) 0b00001001);
+
         //Funny Comment
         //This data is displayed on the driver hub console
         telemetry.addData("Status", "Initialized");
@@ -221,47 +289,6 @@ public class AprilTagTeleOp extends LinearOpMode {
 
         //Reset runtime var
         runtime.reset();
-
-        //Motor powers
-        motor_powers.put("front_left", 0.0);
-        motor_powers.put("front_right", 0.0);
-        motor_powers.put("back_left", 0.0);
-        motor_powers.put("back_right", 0.0);
-
-        motor_powers.put("intake", 0.0);
-        motor_powers.put("flywheel1", 0.0);
-        motor_powers.put("flywheel2", 0.0);
-
-        //Settings for servos
-
-        //CRServos Powers
-
-        //Initialize camera and april tag processing stuff
-        tagProcessor = new AprilTagProcessor.Builder()
-                .setDrawTagID(true)
-                .setDrawAxes(true)
-                .setDrawCubeProjection(true)
-                .setOutputUnits(DistanceUnit.CM, AngleUnit.RADIANS)
-                .build();
-
-        visionPortal = new VisionPortal.Builder()
-                .addProcessor(tagProcessor)
-                //declares the camera
-                .setCamera(hardwareMap.get(CameraName.class, "Webcam 1"))
-                //stream format
-                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
-                //start live stream
-                //.enableLiveView(true)
-                //sets camera resolution; turn down if performance issues
-                .setCameraResolution(new Size(640, 480))
-                //as above
-                .build();
-
-        //Disable processor to start (conserve bandwidth)
-        visionPortal.setProcessorEnabled(tagProcessor, false);
-
-        //Macro action map entries
-        action_map.put("aimbot", (byte) 0b00001001);
 
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
@@ -302,23 +329,36 @@ public class AprilTagTeleOp extends LinearOpMode {
             }
 
             //Manual intake control
-            if (check_mask("manual_intake")) {
+            if (check_mask("manual_intake") && (Math.abs(custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE)) > 0)) {
                 action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
+                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
+            }
+            else {
+                action_map.put("manual_intake", (byte) (action_map.get("manual_intake") & (~ON_BITMASK)));
             }
 
             //Manual flywheel control
-            if (check_mask("manual_flywheel")) {
+            if (check_mask("manual_flywheel") && (Math.abs(custom_gamepad_2.get_left_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE)) > 0)) {
                 action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") | ON_BITMASK));
+                motor_powers.put("flywheel", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+            }
+            else {
+                action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") & (~ON_BITMASK)));
+            }
+
+            //Manual intake servo control
+            if (check_mask("manual_intake_servo") && (custom_gamepad_2.get_right_trigger() > 0)) {
+                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") | ON_BITMASK));
+                crservo_powers.put("intake_servo", INTAKE_SERVO_SPEED * custom_gamepad_2.get_right_trigger());
+            }
+            else {
+                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") & (~ON_BITMASK)));
             }
 
             //Check for aimbot macro
-            telemetry.addData("Dpad-up", custom_gamepad_2.get_dpad_up());
-            telemetry.addData("Aimbot on", action_map.get("aimbot") < 0);
             if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
-                    telemetry.update();
-                    sleep(1000);
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
                     aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
 
@@ -328,27 +368,19 @@ public class AprilTagTeleOp extends LinearOpMode {
 
                 //Check if we're done
                 if (runtime.milliseconds() > aimbot_flywheel_time_finished) {
-                    telemetry.addLine("Ending aimbot");
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
-                    telemetry.addData("Aimbot on", action_map.get("aimbot") < 0);
 
                     //Turn off image processor
                     visionPortal.setProcessorEnabled(tagProcessor, false);
-                    telemetry.update();
-                    sleep(1000);
                 }
                 else {
                     if (tagProcessor.getDetections().size() > 0) {
                         //Scan the tag
                         AprilTagDetection tag = tagProcessor.getDetections().get(0);
-                        tag_bearing = Math.atan((tag.ftcPose.range*Math.sin(tag.ftcPose.bearing) + (CAMERA_HORIZONTAL_OFFSET))/(tag.ftcPose.range*Math.cos(tag.ftcPose.bearing)));
-                        tag_elevation = Math.atan((tag.ftcPose.range*Math.sin(tag.ftcPose.elevation) + (CAMERA_HEIGHT-EXIT_HEIGHT))/(tag.ftcPose.range*Math.cos(tag.ftcPose.elevation)));
-                        tag_range = ((tag.ftcPose.range*Math.cos(tag.ftcPose.elevation))/Math.cos(tag_elevation)*Math.cos(tag.ftcPose.bearing))/Math.cos(tag_bearing);
-
-                        //Adjust variables for the camera offset
-                        telemetry.addData("Tag Range", tag_range);
-                        telemetry.addData("Tag Bearing", tag_bearing);
-                        telemetry.addData("Tag Elevation", tag_elevation);
+                        telemetry.addData("ID", tag.metadata.id);
+                        tag_bearing = tag.ftcPose.bearing;
+                        tag_elevation = tag.ftcPose.elevation;
+                        tag_range = tag.ftcPose.range;
 
                         //We're rotated too far left
                         if (tag_bearing < -BEARING_RANGE) {
@@ -370,10 +402,11 @@ public class AprilTagTeleOp extends LinearOpMode {
                             aimbot_macro_yaw = 0;
 
                             //Calculate exit velocity we need
-                            exit_velocity = (tag_range + BUCKET_WIDTH) * Math.sqrt(GRAVITY/(2 * Math.pow(Math.cos(tag_elevation), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(tag_elevation) - (BUCKET_HEIGHT-EXIT_HEIGHT))));
+                            exit_velocity = (tag_range + BUCKET_WIDTH)* Math.sqrt((GRAVITY*100)/(2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT-EXIT_HEIGHT))));
 
                             //Calculate flywheel motor power
-                            aimbot_flywheel_power = ((30/Math.PI)*Math.sqrt(2*GRAVITY*(EXIT_HEIGHT-RAMP_HEIGHT)+Math.pow(exit_velocity, 2))/FLYWHEEL_RADIUS)/MAX_FLYWHEEL_RPM;
+                            //I'm not good enough at physics for this shit
+                            aimbot_flywheel_power = MAGIC_FLYWHEEL_NUMBER*exit_velocity;
 
                             telemetry.addData("Exit Velocity", exit_velocity);
                             telemetry.addData("Flywheel Power", aimbot_flywheel_power);
@@ -405,21 +438,10 @@ public class AprilTagTeleOp extends LinearOpMode {
                 }
 
                 //Set engine powers
-                motor_powers.put("front_left", axial + lateral + yaw);
-                motor_powers.put("front_right", axial - lateral - yaw);
-                motor_powers.put("back_left", axial - lateral + yaw);
-                motor_powers.put("back_right", axial + lateral - yaw);
-            }
-
-            //Execute intake
-            if (action_map.get("manual_intake") < 0) {
-                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
-            }
-
-            //execute Flywheel
-            if (action_map.get("manual_flywheel") < 0) {
-                motor_powers.put("flywheel1", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
-                motor_powers.put("flywheel2", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+                motor_powers.put("front_left", (axial + lateral + yaw)*MOVEMENT_SPEED);
+                motor_powers.put("front_right", (axial - lateral - yaw)*MOVEMENT_SPEED);
+                motor_powers.put("back_left", (axial - lateral + yaw)*MOVEMENT_SPEED);
+                motor_powers.put("back_right", (axial + lateral - yaw)*MOVEMENT_SPEED);
             }
 
             //Execute aimbot macro
@@ -439,6 +461,12 @@ public class AprilTagTeleOp extends LinearOpMode {
                 telemetry.addData(key, motor_powers.get(key));
                 //Reset motor power
                 motor_powers.put(key, 0.0);
+            }
+            for (String key : crservos.keySet()) {
+                crservos.get(key).setPower(crservo_powers.get(key));
+                telemetry.addData(key, crservo_powers.get(key));
+                //Reset motor power
+                crservo_powers.put(key, 0.0);
             }
             telemetry.update();
         }

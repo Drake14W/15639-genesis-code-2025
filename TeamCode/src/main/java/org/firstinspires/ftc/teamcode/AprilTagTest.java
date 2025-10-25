@@ -7,9 +7,14 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.CameraControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+
+import java.util.concurrent.TimeUnit;
 
 @TeleOp
 public class AprilTagTest extends LinearOpMode {
@@ -27,6 +32,7 @@ public class AprilTagTest extends LinearOpMode {
 
                 .setDrawCubeProjection(true)
 
+                .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
 
                 //This line ends the Apriltag stuff; methods go between this and the first line
                 .build();
@@ -37,7 +43,7 @@ public class AprilTagTest extends LinearOpMode {
                 .addProcessor(tagProcessor)
 
                 //declares the camera
-                .setCamera(hardwareMap.get(CameraName.class, "Webcam 1"))
+                .setCamera(hardwareMap.get(CameraName.class, "c920"))
 
                 //stream format
                 .setStreamFormat(VisionPortal.StreamFormat.YUY2)
@@ -46,13 +52,24 @@ public class AprilTagTest extends LinearOpMode {
                 .enableLiveView(true)
 
                 //sets camera resolution; turn down if performance issues
-                .setCameraResolution(new Size(640, 480))
+                .setCameraResolution(new Size(1920, 1080))
 
                 //as above
                 .build();
 
-        waitForStart();
+        while (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
+            sleep(10);
+        }
 
+        telemetry.addLine("Camera streaming");
+        telemetry.update();
+
+        ExposureControl exposure_control = visionPortal.getCameraControl(ExposureControl.class);
+        exposure_control.setExposure(exposure_control.getMinExposure(TimeUnit.MILLISECONDS) + 1, TimeUnit.MILLISECONDS);
+        GainControl gain_control = visionPortal.getCameraControl(GainControl.class);
+        gain_control.setGain(gain_control.getMaxGain());
+
+        waitForStart();
 
         while (!isStopRequested() && opModeIsActive()) {
 
