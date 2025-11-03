@@ -24,6 +24,8 @@ SOFTWARE.
 
 package org.firstinspires.ftc.teamcode;
 
+import android.util.Size;
+
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -32,8 +34,21 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+
+
 import java.util.HashMap;
 import java.lang.Math;
+import java.util.concurrent.TimeUnit;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
 @TeleOp(name="MainTeleOp", group="Linear OpMode")
@@ -73,7 +88,7 @@ public class MainTeleOp extends LinearOpMode {
     //Level 1:          Rotation control
     //Level 2:          Intake control
     //Level 3:          Flywheel control
-    //Level 4:          Lorem ipsum
+    //Level 4:          Intake servo control
     //Level 5:          Lorem ipsum
     //Level 6:          Lorem ipsum
     //Level 7:          On/Off
@@ -91,15 +106,17 @@ public class MainTeleOp extends LinearOpMode {
     double ROTATION_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
     double ROTATION_ANGULAR_DEADZONE = 0.0; //In degrees
     double ROTATION_SPEED = 0.75;
-    double MOVEMENT_SPEED = 0.5;
+    double MAX_MOVEMENT_SPEED = 1.0;
+    double movement_speed = MAX_MOVEMENT_SPEED;
 
     //Other assorted globals
     double INTAKE_SPEED = 1.0;
     double INTAKE_ANGULAR_DEADZONE = 0.0;
     double INTAKE_RADIAL_DEADZONE = 0.05;
-    double FLYWHEEL_SPEED = 1.0;
+    double INTAKE_SERVO_SPEED = 1.0;
+    double FLYWHEEL_SPEED = 0.25;
     double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
-    double FLYWHEEL_RADIAL_DEADZONE = 0.05;
+    double FLYWHEEL_RADIAL_DEADZONE = 0.20;
 
     //Used to set bytes to "on"
     byte ON_BITMASK = (byte) 0b10000000;
@@ -120,6 +137,39 @@ public class MainTeleOp extends LinearOpMode {
         return true;
     }
 
+    //Camera and AprilTag stuff
+    AprilTagProcessor tagProcessor;
+    VisionPortal visionPortal;
+    AprilTagDetection tag;
+    double tag_range;
+    double tag_elevation;
+    double tag_bearing;
+    final double BEARING_RANGE = 3*(Math.PI/180); //We accept +/- 3 degrees when aiming
+    final double APRIL_TAG_ROTATION_SPEED = 0.1;
+
+    //Movement values for aimbot (april tag) macro
+    double aimbot_macro_yaw;
+    double aimbot_flywheel_power;
+    double aimbot_flywheel_time_finished;
+    final double AIMBOT_FLYWHEEL_RUN_TIME = 1000; //In ms
+
+    //Calculation values for aimbot
+    double exit_velocity;
+    final double MAX_FLYWHEEL_RPM = 18000;
+    final double GRAVITY = 9.81;
+    final double BUCKET_HEIGHT = 98.45;
+    final double CAMERA_HEIGHT = 25;
+    final double CAMERA_X_OFFSET = 15; //To the left of the launcher is positive
+    final double CAMERA_Z_OFFSET = 32; //Forward from the launcher is positive
+    final double CAMERA_YAW = 0; //Left to right angle (positive is left)
+    final double CAMERA_PITCH = 22; //Up-down angle (positive is up)
+    final double CAMERA_ROLL = 0; //Up-down rotation angle (like this for positive: ↓---↑)
+    final double EXIT_HEIGHT = 25;
+    final double EXIT_ANGLE = Math.toRadians(50);
+    final double BALL_RADIUS = 6.25;
+    final double BUCKET_WIDTH = 37; //In cm
+    final double MAGIC_FLYWHEEL_NUMBER = 90;
+
     //We have to override this function since it has already been defined in the parent class LinearOpMode
     @Override
     public void runOpMode() {
@@ -128,7 +178,8 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("trigger_rotation", (byte) 0b00000010);
         action_map.put("stick_rotation", (byte) 0b00000010);
         action_map.put("manual_intake", (byte) 0b00000100);
-        action_map.put("flywheel", (byte) 0b00001000);
+        action_map.put("manual_flywheel", (byte) 0b00001000);
+        action_map.put("manual_intake_servo", (byte) 0b00010000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -138,12 +189,12 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.put("intake", hardwareMap.get(DcMotor.class, "intake_motor"));
 
-        motors.put("flywheel1", hardwareMap.get(DcMotor.class, "flywheel_motor1"));
-        motors.put("flywheel2", hardwareMap.get(DcMotor.class, "flywheel_motor2"));
+        motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor1"));
 
         //Create and assign map entries for all servos
 
         //Create and assign map entries for all CRServos
+        crservos.put("intake_servo", hardwareMap.get(CRServo.class, "intake_servo"));
 
         //Reset encoders
         for (String key : motors.keySet()) {
@@ -159,10 +210,10 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.get("intake").setDirection(DcMotorSimple.Direction.REVERSE);
 
-        motors.get("flywheel1").setDirection(DcMotorSimple.Direction.REVERSE);
-        motors.get("flywheel2").setDirection(DcMotorSimple.Direction.FORWARD);
+        motors.get("flywheel").setDirection(DcMotorSimple.Direction.REVERSE);
 
         //Set direction of servos
+        crservos.get("intake_servo").setDirection(DcMotorSimple.Direction.FORWARD);
 
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
@@ -171,8 +222,63 @@ public class MainTeleOp extends LinearOpMode {
         //Turn on the brakes for 0 power
         for (String key : motors.keySet()) {
             motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            ;
         }
+
+        //Motor powers
+        motor_powers.put("front_left", 0.0);
+        motor_powers.put("front_right", 0.0);
+        motor_powers.put("back_left", 0.0);
+        motor_powers.put("back_right", 0.0);
+
+        motor_powers.put("intake", 0.0);
+        motor_powers.put("flywheel", 0.0);
+
+        //Settings for servos
+
+        //CRServos Powers
+        crservo_powers.put("intake_servo", 0.0);
+
+        //Initialize camera and april tag processing stuff
+        Position cam_position = new Position(DistanceUnit.CM, CAMERA_X_OFFSET, CAMERA_HEIGHT-EXIT_HEIGHT, CAMERA_Z_OFFSET, 0);
+        YawPitchRollAngles yaw_pitch_roll_angles = new YawPitchRollAngles(AngleUnit.DEGREES, CAMERA_YAW, CAMERA_PITCH-90, CAMERA_ROLL, 0);
+        tagProcessor = new AprilTagProcessor.Builder()
+                .setDrawTagID(true)
+                .setDrawAxes(true)
+                .setDrawCubeProjection(true)
+                .setCameraPose(cam_position, yaw_pitch_roll_angles)
+                .setOutputUnits(DistanceUnit.CM, AngleUnit.RADIANS)
+                //For some fucking reason the camera isn't getting autodetected so we have to do it manually
+                .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
+                .build();
+
+        visionPortal = new VisionPortal.Builder()
+                .addProcessor(tagProcessor)
+                //declares the camera
+                .setCamera(hardwareMap.get(CameraName.class, "c920"))
+                //stream format
+                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
+                //sets camera resolution; turn down if performance issues
+                .setCameraResolution(new Size(640, 480))
+                //as above
+                .build();
+
+        //Disable processor to start (conserve bandwidth)
+        visionPortal.setProcessorEnabled(tagProcessor, false);
+
+        //Wait for camera to start up
+        while (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
+            sleep(10);
+        }
+
+        //Adjust camera settings
+        ExposureControl exposure_control = visionPortal.getCameraControl(ExposureControl.class);
+        exposure_control.setExposure(exposure_control.getMinExposure(TimeUnit.MILLISECONDS) + 1, TimeUnit.MILLISECONDS);
+        GainControl gain_control = visionPortal.getCameraControl(GainControl.class);
+        gain_control.setGain(gain_control.getMaxGain());
+
+        //Macro action map entries
+        action_map.put("aimbot", (byte) 0b00001001);
+
         //Funny Comment
         //This data is displayed on the driver hub console
         telemetry.addData("Status", "Initialized");
@@ -184,25 +290,21 @@ public class MainTeleOp extends LinearOpMode {
         //Reset runtime var
         runtime.reset();
 
-        //Motor powers
-        motor_powers.put("front_left", 0.0);
-        motor_powers.put("front_right", 0.0);
-        motor_powers.put("back_left", 0.0);
-        motor_powers.put("back_right", 0.0);
-
-        motor_powers.put("intake", 0.0);
-        motor_powers.put("flywheel1", 0.0);
-        motor_powers.put("flywheel2", 0.0);
-
-        //Settings for servos
-
-        //CRServos Powers
-
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
             //Update gamepad input
             custom_gamepad_1.update();
             custom_gamepad_2.update();
+
+            //Speed toggle
+            if (custom_gamepad_1.get_x_just_pressed()) {
+                if (movement_speed == MAX_MOVEMENT_SPEED) {
+                    movement_speed /= 2;
+                }
+                else {
+                    movement_speed = MAX_MOVEMENT_SPEED;
+                }
+            }
 
             //Manual movement controls
             //We use gamepad1 for actually moving the robot and gamepad2 for everything else
@@ -232,23 +334,104 @@ public class MainTeleOp extends LinearOpMode {
                     }
                 }
             }
+            else {
+                action_map.put("manual_movement", (byte) (action_map.get("manual_movement") & (~ON_BITMASK)));
+            }
 
             //Manual intake control
-            if (check_mask("manual_intake")) {
+            if (check_mask("manual_intake") && (Math.abs(custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE)) > 0)) {
                 action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
+                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
+            }
+            else {
+                action_map.put("manual_intake", (byte) (action_map.get("manual_intake") & (~ON_BITMASK)));
             }
 
             //Manual flywheel control
-            if (check_mask("flywheel")) {
-                action_map.put("flywheel", (byte) (action_map.get("flywheel") | ON_BITMASK));
+            if (check_mask("manual_flywheel") && (Math.abs(custom_gamepad_2.get_left_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE)) > 0)) {
+                action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") | ON_BITMASK));
+                motor_powers.put("flywheel", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+            }
+            else {
+                action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") & (~ON_BITMASK)));
             }
 
-            telemetry.addData("Axial", axial);
-            telemetry.addData("Lateral", lateral);
-            telemetry.addData("Yaw", stick_yaw);
-            telemetry.addData("Manual Movement", action_map.get("manual_movement"));
-            telemetry.addData("Flywheel", action_map.get("flywheel"));
-            telemetry.update();
+            //Manual intake servo control
+            if (check_mask("manual_intake_servo") && (custom_gamepad_2.get_right_trigger() > 0)) {
+                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") | ON_BITMASK));
+                crservo_powers.put("intake_servo", INTAKE_SERVO_SPEED * custom_gamepad_2.get_right_trigger());
+            }
+            else {
+                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") & (~ON_BITMASK)));
+            }
+
+            //Check for aimbot macro
+            if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
+                //If this is fresh
+                if (action_map.get("aimbot") > 0) {
+                    action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
+                    aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+
+                    //Turn on image processor
+                    visionPortal.setProcessorEnabled(tagProcessor, true);
+                }
+
+                //Check if we're done
+                if (runtime.milliseconds() > aimbot_flywheel_time_finished) {
+                    action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
+
+                    //Turn off image processor
+                    visionPortal.setProcessorEnabled(tagProcessor, false);
+                }
+                else {
+                    if (tagProcessor.getDetections().size() > 0) {
+                        //Scan the tag
+                        AprilTagDetection tag = tagProcessor.getDetections().get(0);
+                        telemetry.addData("ID", tag.metadata.id);
+                        tag_bearing = tag.ftcPose.bearing;
+                        tag_elevation = tag.ftcPose.elevation;
+                        tag_range = tag.ftcPose.range;
+
+                        //We're rotated too far left
+                        if (tag_bearing < -BEARING_RANGE) {
+                            telemetry.addLine("Too far left");
+                            aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
+                            aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                            aimbot_flywheel_power = 0;
+                        }
+                        //We're rotated too far right
+                        else if (tag_bearing > BEARING_RANGE) {
+                            telemetry.addLine("Too far right");
+                            aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
+                            aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                            aimbot_flywheel_power = 0;
+                        }
+                        //Shoot
+                        else {
+                            telemetry.addLine("Shooting");
+                            aimbot_macro_yaw = 0;
+
+                            //Calculate exit velocity we need
+                            exit_velocity = (tag_range + BUCKET_WIDTH)* Math.sqrt((GRAVITY*100)/(2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT-EXIT_HEIGHT))));
+
+                            //Calculate flywheel motor power
+                            //I'm not good enough at physics for this shit
+                            aimbot_flywheel_power = MAGIC_FLYWHEEL_NUMBER*exit_velocity;
+
+                            telemetry.addData("Exit Velocity", exit_velocity);
+                            telemetry.addData("Flywheel Power", aimbot_flywheel_power);
+                            telemetry.addData("Flywheel Time Remaining", aimbot_flywheel_time_finished - runtime.milliseconds());
+                        }
+                    }
+                }
+            }
+            if (custom_gamepad_2.get_dpad_down()) {
+                //Turn off macro
+                action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
+
+                //Turn off image processor
+                visionPortal.setProcessorEnabled(tagProcessor, false);
+            }
 
             //Execute state actions
             //This checks if msb is set
@@ -265,27 +448,37 @@ public class MainTeleOp extends LinearOpMode {
                 }
 
                 //Set engine powers
-                motor_powers.put("front_left", axial + lateral + yaw);
-                motor_powers.put("front_right", axial - lateral - yaw);
-                motor_powers.put("back_left", axial - lateral + yaw);
-                motor_powers.put("back_right", axial + lateral - yaw);
+                motor_powers.put("front_left", (axial + lateral + yaw)*movement_speed);
+                motor_powers.put("front_right", (axial - lateral - yaw)*movement_speed);
+                motor_powers.put("back_left", (axial - lateral + yaw)*movement_speed);
+                motor_powers.put("back_right", (axial + lateral - yaw)*movement_speed);
             }
 
-            //Execute intake
-            if (action_map.get("manual_intake") < 0) {
-                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
-            }
+            //Execute aimbot macro
+            if (action_map.get("aimbot") < 0) {
+                motor_powers.put("front_left", aimbot_macro_yaw);
+                motor_powers.put("front_right", -aimbot_macro_yaw);
+                motor_powers.put("back_left", aimbot_macro_yaw);
+                motor_powers.put("back_right", -aimbot_macro_yaw);
 
-            //execute flywheel
-            if (action_map.get("flywheel") < 0) {
-                motor_powers.put("flywheel1", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
-                motor_powers.put("flywheel2", FLYWHEEL_SPEED * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
+                motor_powers.put("flywheel1", aimbot_flywheel_power);
+                motor_powers.put("flywheel2", aimbot_flywheel_power);
             }
 
             //Execute powers
             for (String key : motor_powers.keySet()) {
                 motors.get(key).setPower(motor_powers.get(key));
+                telemetry.addData(key, motor_powers.get(key));
+                //Reset motor power
+                motor_powers.put(key, 0.0);
             }
+            for (String key : crservos.keySet()) {
+                crservos.get(key).setPower(crservo_powers.get(key));
+                telemetry.addData(key, crservo_powers.get(key));
+                //Reset motor power
+                crservo_powers.put(key, 0.0);
+            }
+            telemetry.update();
         }
     }
 }
