@@ -126,8 +126,8 @@ public class MainTeleOp extends LinearOpMode {
         for (String iter_key : action_map.keySet()) {
             if (iter_key != key) {
                 if (action_map.get(iter_key) < 0) {
-                    bit_mask_result = (byte) (action_map.get(iter_key) & action_map.get(iter_key));
-                    if ((bit_mask_result == 0) || (bit_mask_result == -127)) {
+                    bit_mask_result = (byte) (action_map.get(key) & action_map.get(iter_key));
+                    if (!((bit_mask_result == 0) || (bit_mask_result == -1))) {
                         return false;
                     }
                 }
@@ -336,6 +336,8 @@ public class MainTeleOp extends LinearOpMode {
             }
             else {
                 action_map.put("manual_movement", (byte) (action_map.get("manual_movement") & (~ON_BITMASK)));
+                action_map.put("stick_rotation", (byte) (action_map.get("stick_rotation") & (~ON_BITMASK)));
+                action_map.put("trigger_rotation", (byte) (action_map.get("trigger_rotation") & (~ON_BITMASK)));
             }
 
             //Manual intake control
@@ -461,8 +463,7 @@ public class MainTeleOp extends LinearOpMode {
                 motor_powers.put("back_left", aimbot_macro_yaw);
                 motor_powers.put("back_right", -aimbot_macro_yaw);
 
-                motor_powers.put("flywheel1", aimbot_flywheel_power);
-                motor_powers.put("flywheel2", aimbot_flywheel_power);
+                motor_powers.put("flywheel", aimbot_flywheel_power);
             }
 
             //Execute powers
