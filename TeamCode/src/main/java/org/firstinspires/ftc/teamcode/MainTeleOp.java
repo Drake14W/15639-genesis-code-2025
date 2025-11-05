@@ -114,9 +114,15 @@ public class MainTeleOp extends LinearOpMode {
     double INTAKE_ANGULAR_DEADZONE = 0.0;
     double INTAKE_RADIAL_DEADZONE = 0.05;
     double INTAKE_SERVO_SPEED = 1.0;
-    double FLYWHEEL_SPEED = 0.25;
+    double FLYWHEEL_SPEED = 1.00;
     double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     double FLYWHEEL_RADIAL_DEADZONE = 0.20;
+
+    //RPM Calculations
+    double FLYWHEEL_CPR = 28;
+    double flywheel_revs = 0;
+    double flywheel_rpm;
+    double last_rpm_time;
 
     //Used to set bytes to "on"
     byte ON_BITMASK = (byte) 0b10000000;
@@ -126,8 +132,8 @@ public class MainTeleOp extends LinearOpMode {
         for (String iter_key : action_map.keySet()) {
             if (iter_key != key) {
                 if (action_map.get(iter_key) < 0) {
-                    bit_mask_result = (byte) (action_map.get(key) & action_map.get(iter_key));
-                    if (!((bit_mask_result == 0) || (bit_mask_result == -1))) {
+                    bit_mask_result = (byte) (action_map.get(key) & action_map.get(iter_key) & (~ON_BITMASK));
+                    if (bit_mask_result != 0) {
                         return false;
                     }
                 }
@@ -158,13 +164,13 @@ public class MainTeleOp extends LinearOpMode {
     final double MAX_FLYWHEEL_RPM = 18000;
     final double GRAVITY = 9.81;
     final double BUCKET_HEIGHT = 98.45;
-    final double CAMERA_HEIGHT = 25;
-    final double CAMERA_X_OFFSET = 15; //To the left of the launcher is positive
-    final double CAMERA_Z_OFFSET = 32; //Forward from the launcher is positive
+    final double CAMERA_HEIGHT = 32;
+    final double CAMERA_X_OFFSET = 0; //To the left of the launcher is positive
+    final double CAMERA_Z_OFFSET = 25; //Forward from the launcher is positive
     final double CAMERA_YAW = 0; //Left to right angle (positive is left)
-    final double CAMERA_PITCH = 22; //Up-down angle (positive is up)
+    final double CAMERA_PITCH = 5; //Up-down angle (positive is up)
     final double CAMERA_ROLL = 0; //Up-down rotation angle (like this for positive: ↓---↑)
-    final double EXIT_HEIGHT = 25;
+    final double EXIT_HEIGHT = 35;
     final double EXIT_ANGLE = Math.toRadians(50);
     final double BALL_RADIUS = 6.25;
     final double BUCKET_WIDTH = 37; //In cm
@@ -189,7 +195,7 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.put("intake", hardwareMap.get(DcMotor.class, "intake_motor"));
 
-        motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor1"));
+        motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor"));
 
         //Create and assign map entries for all servos
 
@@ -199,7 +205,12 @@ public class MainTeleOp extends LinearOpMode {
         //Reset encoders
         for (String key : motors.keySet()) {
             motors.get(key).setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            motors.get(key).setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            if (key == "flywheel") {
+                motors.get(key).setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            }
+            else {
+                motors.get(key).setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            }
         }
 
         //Set direction of motors
@@ -287,6 +298,8 @@ public class MainTeleOp extends LinearOpMode {
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
+        last_rpm_time = runtime.milliseconds();
+
         //Reset runtime var
         runtime.reset();
 
@@ -305,6 +318,13 @@ public class MainTeleOp extends LinearOpMode {
                     movement_speed = MAX_MOVEMENT_SPEED;
                 }
             }
+
+            //Update motor rpm
+            //x60000 converts from milliseconds to minutes
+            flywheel_rpm = (motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR - flywheel_revs) / (runtime.milliseconds() - last_rpm_time) * 60000;
+            last_rpm_time = runtime.milliseconds();
+            flywheel_revs = motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR;
+            telemetry.addData("Flywheel RPM", flywheel_rpm);
 
             //Manual movement controls
             //We use gamepad1 for actually moving the robot and gamepad2 for everything else
@@ -475,9 +495,11 @@ public class MainTeleOp extends LinearOpMode {
             }
             for (String key : crservos.keySet()) {
                 crservos.get(key).setPower(crservo_powers.get(key));
-                telemetry.addData(key, crservo_powers.get(key));
                 //Reset motor power
                 crservo_powers.put(key, 0.0);
+            }
+            for (String key : action_map.keySet()) {
+                telemetry.addData(key, String.format("%8s", Integer.toBinaryString(action_map.get(key) & 0xFF)).replace(' ', '0'));
             }
             telemetry.update();
         }
