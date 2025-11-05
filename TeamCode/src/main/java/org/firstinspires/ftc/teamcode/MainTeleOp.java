@@ -101,31 +101,32 @@ public class MainTeleOp extends LinearOpMode {
     private double axial, lateral, trigger_yaw, stick_yaw, yaw;
 
     //Globals for movement
-    double LONG_LAT_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
-    double LONG_LAT_ANGULAR_DEADZONE = 2;   //In degrees
-    double ROTATION_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
-    double ROTATION_ANGULAR_DEADZONE = 0.0; //In degrees
-    double ROTATION_SPEED = 0.75;
-    double MAX_MOVEMENT_SPEED = 1.0;
+    final double LONG_LAT_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
+    final double LONG_LAT_ANGULAR_DEADZONE = 2;   //In degrees
+    final double ROTATION_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
+    final double ROTATION_ANGULAR_DEADZONE = 0.0; //In degrees
+    final double ROTATION_SPEED = 0.75;
+    final double MAX_MOVEMENT_SPEED = 1.0;
     double movement_speed = MAX_MOVEMENT_SPEED;
 
     //Other assorted globals
-    double INTAKE_SPEED = 1.0;
-    double INTAKE_ANGULAR_DEADZONE = 0.0;
-    double INTAKE_RADIAL_DEADZONE = 0.05;
-    double INTAKE_SERVO_SPEED = 1.0;
-    double FLYWHEEL_SPEED = 1.00;
-    double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
-    double FLYWHEEL_RADIAL_DEADZONE = 0.20;
+    final double INTAKE_SPEED = 1.0;
+    final double INTAKE_ANGULAR_DEADZONE = 0.0;
+    final double INTAKE_RADIAL_DEADZONE = 0.05;
+    final double INTAKE_SERVO_SPEED = 1.0;
+    final double FLYWHEEL_SPEED = 1.00;
+    final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
+    final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
+    final boolean TELEMETRY_OUTPUT = false;
 
     //RPM Calculations
-    double FLYWHEEL_CPR = 28;
-    double flywheel_revs = 0;
+    final double FLYWHEEL_CPR = 28;
+    double last_flywheel_revs = 0;
     double flywheel_rpm;
     double last_rpm_time;
 
     //Used to set bytes to "on"
-    byte ON_BITMASK = (byte) 0b10000000;
+    final byte ON_BITMASK = (byte) 0b10000000;
 
     private boolean check_mask(String key) {
         byte bit_mask_result;
@@ -152,12 +153,12 @@ public class MainTeleOp extends LinearOpMode {
     double tag_bearing;
     final double BEARING_RANGE = 3*(Math.PI/180); //We accept +/- 3 degrees when aiming
     final double APRIL_TAG_ROTATION_SPEED = 0.1;
+    final double APRIL_TAG_PERMITTED_DELAY = 0.2; //We allow 0.2 seconds of delay between detecting the april tag and acting upon it, otherwise we ignore it
 
     //Movement values for aimbot (april tag) macro
     double aimbot_macro_yaw;
     double aimbot_flywheel_power;
-    double aimbot_flywheel_time_finished;
-    final double AIMBOT_FLYWHEEL_RUN_TIME = 1000; //In ms
+    double aimbot_intake_crservo_power;
 
     //Calculation values for aimbot
     double exit_velocity;
@@ -175,6 +176,19 @@ public class MainTeleOp extends LinearOpMode {
     final double BALL_RADIUS = 6.25;
     final double BUCKET_WIDTH = 37; //In cm
     final double MAGIC_FLYWHEEL_NUMBER = 90;
+    double flywheel_rpm_error;
+    double aimbot_needed_flywheel_rpm;
+    double aimbot_crservo_time_finished;
+    final double AIMBOT_FLYWHEEL_RUN_TIME = 1000; //In ms
+    final double PROPORTIONAL_COEFFIEICENT = 0.01;
+    final double INTEGRAL_COEFFICIENT = 0.005;
+    final double DERIVATIVE_COEFFICIENT = 0.001;
+    double rpm_error_integral_val;
+    double rpm_error_deriv_val;
+    double pid_time_delta;
+    double pid_last_time;
+    double rpm_previous_error;
+    final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
 
     //We have to override this function since it has already been defined in the parent class LinearOpMode
     @Override
@@ -283,12 +297,15 @@ public class MainTeleOp extends LinearOpMode {
 
         //Adjust camera settings
         ExposureControl exposure_control = visionPortal.getCameraControl(ExposureControl.class);
+        if (exposure_control.getMode() != ExposureControl.Mode.Manual) {
+            exposure_control.setMode(ExposureControl.Mode.Manual);
+        }
         exposure_control.setExposure(exposure_control.getMinExposure(TimeUnit.MILLISECONDS) + 1, TimeUnit.MILLISECONDS);
         GainControl gain_control = visionPortal.getCameraControl(GainControl.class);
         gain_control.setGain(gain_control.getMaxGain());
 
         //Macro action map entries
-        action_map.put("aimbot", (byte) 0b00001001);
+        action_map.put("aimbot", (byte) 0b00011001);
 
         //Funny Comment
         //This data is displayed on the driver hub console
@@ -321,9 +338,9 @@ public class MainTeleOp extends LinearOpMode {
 
             //Update motor rpm
             //x60000 converts from milliseconds to minutes
-            flywheel_rpm = (motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR - flywheel_revs) / (runtime.milliseconds() - last_rpm_time) * 60000;
+            flywheel_rpm = (motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR - last_flywheel_revs) / (runtime.milliseconds() - last_rpm_time) * 60000;
+            last_flywheel_revs = motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR;
             last_rpm_time = runtime.milliseconds();
-            flywheel_revs = motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR;
             telemetry.addData("Flywheel RPM", flywheel_rpm);
 
             //Manual movement controls
@@ -392,14 +409,17 @@ public class MainTeleOp extends LinearOpMode {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
-                    aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                    aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                    pid_last_time = runtime.milliseconds();
+                    rpm_error_integral_val = 0;
+                    rpm_previous_error = 0;
 
                     //Turn on image processor
                     visionPortal.setProcessorEnabled(tagProcessor, true);
                 }
 
                 //Check if we're done
-                if (runtime.milliseconds() > aimbot_flywheel_time_finished) {
+                if (runtime.milliseconds() > aimbot_crservo_time_finished) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
 
                     //Turn off image processor
@@ -407,42 +427,58 @@ public class MainTeleOp extends LinearOpMode {
                 }
                 else {
                     if (tagProcessor.getDetections().size() > 0) {
-                        //Scan the tag
                         AprilTagDetection tag = tagProcessor.getDetections().get(0);
-                        telemetry.addData("ID", tag.metadata.id);
-                        tag_bearing = tag.ftcPose.bearing;
-                        tag_elevation = tag.ftcPose.elevation;
-                        tag_range = tag.ftcPose.range;
+                        //1000000000 converts from nanoseconds to seconds
+                        //I hope frameAcquisitionNanoTime is relative to runtime, otherwise this won't work
+                        telemetry.addData("Runtime", runtime.seconds());
+                        telemetry.addData("Frame acquisition time", tag.frameAcquisitionNanoTime*1000000000);
+                        if ((runtime.nanoseconds() - tag.frameAcquisitionNanoTime)*1000000000 < APRIL_TAG_PERMITTED_DELAY) {
+                            //Scan the tag
+                            telemetry.addData("ID", tag.metadata.id);
+                            tag_bearing = tag.ftcPose.bearing;
+                            tag_elevation = tag.ftcPose.elevation;
+                            tag_range = tag.ftcPose.range;
 
-                        //We're rotated too far left
-                        if (tag_bearing < -BEARING_RANGE) {
-                            telemetry.addLine("Too far left");
-                            aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
-                            aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
-                            aimbot_flywheel_power = 0;
-                        }
-                        //We're rotated too far right
-                        else if (tag_bearing > BEARING_RANGE) {
-                            telemetry.addLine("Too far right");
-                            aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
-                            aimbot_flywheel_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
-                            aimbot_flywheel_power = 0;
-                        }
-                        //Shoot
-                        else {
-                            telemetry.addLine("Shooting");
-                            aimbot_macro_yaw = 0;
-
+                            //Get the flywheel running and PID this motherfucker
                             //Calculate exit velocity we need
-                            exit_velocity = (tag_range + BUCKET_WIDTH)* Math.sqrt((GRAVITY*100)/(2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT-EXIT_HEIGHT))));
+                            exit_velocity = (tag_range + BUCKET_WIDTH) * Math.sqrt((GRAVITY * 100) / (2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT - EXIT_HEIGHT))));
 
                             //Calculate flywheel motor power
                             //I'm not good enough at physics for this shit
-                            aimbot_flywheel_power = MAGIC_FLYWHEEL_NUMBER*exit_velocity;
+                            aimbot_needed_flywheel_rpm = MAGIC_FLYWHEEL_NUMBER * exit_velocity;
 
-                            telemetry.addData("Exit Velocity", exit_velocity);
-                            telemetry.addData("Flywheel Power", aimbot_flywheel_power);
-                            telemetry.addData("Flywheel Time Remaining", aimbot_flywheel_time_finished - runtime.milliseconds());
+                            flywheel_rpm_error = aimbot_needed_flywheel_rpm - flywheel_rpm;
+
+                            pid_time_delta = runtime.milliseconds() - pid_last_time;
+                            rpm_error_integral_val = flywheel_rpm_error*pid_time_delta;
+                            rpm_error_deriv_val = (flywheel_rpm_error - rpm_previous_error) / pid_time_delta;
+                            pid_last_time = runtime.milliseconds();
+                            rpm_previous_error = flywheel_rpm_error;
+
+                            aimbot_flywheel_power = PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
+
+                            aimbot_intake_crservo_power = 0;
+                            //We're rotated too far left
+                            if (tag_bearing < -BEARING_RANGE) {
+                                telemetry.addLine("Too far left");
+                                aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
+                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                            }
+                            //We're rotated too far right
+                            else if (tag_bearing > BEARING_RANGE) {
+                                telemetry.addLine("Too far right");
+                                aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
+                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                            }
+                            //Shoot
+                            else if (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE) {
+                                telemetry.addLine("Shooting");
+                                aimbot_macro_yaw = 0;
+                                aimbot_intake_crservo_power = INTAKE_SERVO_SPEED;
+                                telemetry.addData("Exit Velocity", exit_velocity);
+                                telemetry.addData("Flywheel Power", aimbot_flywheel_power);
+                                telemetry.addData("Flywheel Time Remaining", aimbot_crservo_time_finished - runtime.milliseconds());
+                            }
                         }
                     }
                 }
@@ -484,6 +520,8 @@ public class MainTeleOp extends LinearOpMode {
                 motor_powers.put("back_right", -aimbot_macro_yaw);
 
                 motor_powers.put("flywheel", aimbot_flywheel_power);
+
+                crservo_powers.put("intake_servo", aimbot_intake_crservo_power);
             }
 
             //Execute powers
@@ -501,7 +539,10 @@ public class MainTeleOp extends LinearOpMode {
             for (String key : action_map.keySet()) {
                 telemetry.addData(key, String.format("%8s", Integer.toBinaryString(action_map.get(key) & 0xFF)).replace(' ', '0'));
             }
-            telemetry.update();
+
+            if (TELEMETRY_OUTPUT) {
+                telemetry.update();
+            }
         }
     }
 }
