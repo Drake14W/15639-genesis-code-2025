@@ -117,7 +117,8 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_SPEED = 1.00;
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
-    final boolean TELEMETRY_OUTPUT = false;
+    final double LIFT_POWER = 1.0;
+    final boolean TELEMETRY_OUTPUT = true;
 
     //RPM Calculations
     final double FLYWHEEL_CPR = 28;
@@ -159,6 +160,8 @@ public class MainTeleOp extends LinearOpMode {
     double aimbot_macro_yaw;
     double aimbot_flywheel_power;
     double aimbot_intake_crservo_power;
+    double aimbot_intake_power;
+    boolean aimbot_shooting;
 
     //Calculation values for aimbot
     double exit_velocity;
@@ -175,11 +178,11 @@ public class MainTeleOp extends LinearOpMode {
     final double EXIT_ANGLE = Math.toRadians(50);
     final double BALL_RADIUS = 6.25;
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 90;
+    final double MAGIC_FLYWHEEL_NUMBER = 6.5;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     double aimbot_crservo_time_finished;
-    final double AIMBOT_FLYWHEEL_RUN_TIME = 1000; //In ms
+    final double AIMBOT_INTAKE_RUN_TIME = 3000; //In ms
     final double PROPORTIONAL_COEFFIEICENT = 0.01;
     final double INTEGRAL_COEFFICIENT = 0.005;
     final double DERIVATIVE_COEFFICIENT = 0.001;
@@ -200,6 +203,7 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("manual_intake", (byte) 0b00000100);
         action_map.put("manual_flywheel", (byte) 0b00001000);
         action_map.put("manual_intake_servo", (byte) 0b00010000);
+        action_map.put("lift", (byte) 0b00100000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -210,6 +214,9 @@ public class MainTeleOp extends LinearOpMode {
         motors.put("intake", hardwareMap.get(DcMotor.class, "intake_motor"));
 
         motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor"));
+
+        motors.put("lift_motor1", hardwareMap.get(DcMotor.class, "lift_motor1"));
+        motors.put("lift_motor2", hardwareMap.get(DcMotor.class, "lift_motor2"));
 
         //Create and assign map entries for all servos
 
@@ -237,6 +244,9 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.get("flywheel").setDirection(DcMotorSimple.Direction.REVERSE);
 
+        motors.get("lift_motor1").setDirection(DcMotorSimple.Direction.FORWARD);
+        motors.get("lift_motor2").setDirection(DcMotorSimple.Direction.REVERSE);
+
         //Set direction of servos
         crservos.get("intake_servo").setDirection(DcMotorSimple.Direction.FORWARD);
 
@@ -250,18 +260,19 @@ public class MainTeleOp extends LinearOpMode {
         }
 
         //Motor powers
-        motor_powers.put("front_left", 0.0);
-        motor_powers.put("front_right", 0.0);
-        motor_powers.put("back_left", 0.0);
-        motor_powers.put("back_right", 0.0);
-
-        motor_powers.put("intake", 0.0);
-        motor_powers.put("flywheel", 0.0);
+        for (String key : motors.keySet()) {
+            motor_powers.put(key, 0.0);
+        }
 
         //Settings for servos
+        for (String key : servos.keySet()) {
+            servo_positions.put(key, 0.0);
+        }
 
         //CRServos Powers
-        crservo_powers.put("intake_servo", 0.0);
+        for (String key : crservos.keySet()) {
+            crservo_powers.put(key, 0.0);
+        }
 
         //Initialize camera and april tag processing stuff
         Position cam_position = new Position(DistanceUnit.CM, CAMERA_X_OFFSET, CAMERA_HEIGHT-EXIT_HEIGHT, CAMERA_Z_OFFSET, 0);
@@ -404,15 +415,33 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") & (~ON_BITMASK)));
             }
 
+            //Lift control
+            if (check_mask("lift") && (custom_gamepad_1.get_right_bumper() || custom_gamepad_1.get_left_bumper())) {
+                action_map.put("lift", (byte) (action_map.get("lift") | ON_BITMASK));
+                if (custom_gamepad_1.get_right_bumper()) {
+                    motor_powers.put("lift_motor1", LIFT_POWER);
+                    motor_powers.put("lift_motor2", LIFT_POWER);
+                }
+                else if (custom_gamepad_1.get_left_bumper()) {
+                    motor_powers.put("lift_motor1", -LIFT_POWER);
+                    motor_powers.put("lift_motor2", -LIFT_POWER);
+                }
+            }
+            else {
+                action_map.put("lift", (byte) (action_map.get("lift") & (~ON_BITMASK)));
+            }
+
+
             //Check for aimbot macro
             if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
-                    aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                    aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_INTAKE_RUN_TIME;
                     pid_last_time = runtime.milliseconds();
                     rpm_error_integral_val = 0;
                     rpm_previous_error = 0;
+                    aimbot_shooting = false;
 
                     //Turn on image processor
                     visionPortal.setProcessorEnabled(tagProcessor, true);
@@ -429,10 +458,7 @@ public class MainTeleOp extends LinearOpMode {
                     if (tagProcessor.getDetections().size() > 0) {
                         AprilTagDetection tag = tagProcessor.getDetections().get(0);
                         //1000000000 converts from nanoseconds to seconds
-                        //I hope frameAcquisitionNanoTime is relative to runtime, otherwise this won't work
-                        telemetry.addData("Runtime", runtime.seconds());
-                        telemetry.addData("Frame acquisition time", tag.frameAcquisitionNanoTime*1000000000);
-                        if ((runtime.nanoseconds() - tag.frameAcquisitionNanoTime)*1000000000 < APRIL_TAG_PERMITTED_DELAY) {
+                        if (((double)(System.nanoTime() - tag.frameAcquisitionNanoTime))/1000000000 < APRIL_TAG_PERMITTED_DELAY) {
                             //Scan the tag
                             telemetry.addData("ID", tag.metadata.id);
                             tag_bearing = tag.ftcPose.bearing;
@@ -458,26 +484,39 @@ public class MainTeleOp extends LinearOpMode {
                             aimbot_flywheel_power = PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
 
                             aimbot_intake_crservo_power = 0;
+                            telemetry.addData("Wanted RPM", aimbot_needed_flywheel_rpm);
+                            telemetry.addData("Exit Velocity", exit_velocity/100);
+                            telemetry.addData("RPM Error", flywheel_rpm_error);
+                            telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                             //We're rotated too far left
                             if (tag_bearing < -BEARING_RANGE) {
                                 telemetry.addLine("Too far left");
                                 aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
-                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_INTAKE_RUN_TIME;
                             }
                             //We're rotated too far right
                             else if (tag_bearing > BEARING_RANGE) {
                                 telemetry.addLine("Too far right");
                                 aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
-                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_FLYWHEEL_RUN_TIME;
+                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_INTAKE_RUN_TIME;
                             }
                             //Shoot
                             else if (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE) {
                                 telemetry.addLine("Shooting");
                                 aimbot_macro_yaw = 0;
-                                aimbot_intake_crservo_power = INTAKE_SERVO_SPEED;
+                                aimbot_shooting = true;
                                 telemetry.addData("Exit Velocity", exit_velocity);
                                 telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                                 telemetry.addData("Flywheel Time Remaining", aimbot_crservo_time_finished - runtime.milliseconds());
+                            }
+
+                            if (aimbot_shooting) {
+                                aimbot_intake_crservo_power = INTAKE_SERVO_SPEED;
+                                aimbot_intake_power = INTAKE_SPEED;
+                            }
+                            else {
+                                aimbot_intake_crservo_power = 0;
+                                aimbot_intake_power = 0;
                             }
                         }
                     }
@@ -521,6 +560,7 @@ public class MainTeleOp extends LinearOpMode {
 
                 motor_powers.put("flywheel", aimbot_flywheel_power);
 
+                motor_powers.put("intake", aimbot_intake_power);
                 crservo_powers.put("intake_servo", aimbot_intake_crservo_power);
             }
 
@@ -533,6 +573,7 @@ public class MainTeleOp extends LinearOpMode {
             }
             for (String key : crservos.keySet()) {
                 crservos.get(key).setPower(crservo_powers.get(key));
+                telemetry.addData(key, crservo_powers.get(key));
                 //Reset motor power
                 crservo_powers.put(key, 0.0);
             }
