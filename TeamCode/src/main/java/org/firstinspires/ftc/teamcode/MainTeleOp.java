@@ -118,7 +118,7 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
-    final boolean TELEMETRY_OUTPUT = true;
+    boolean telemetry_output = false;
 
     //RPM Calculations
     final double FLYWHEEL_CPR = 28;
@@ -181,8 +181,6 @@ public class MainTeleOp extends LinearOpMode {
     final double MAGIC_FLYWHEEL_NUMBER = 6.5;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
-    double aimbot_crservo_time_finished;
-    final double AIMBOT_INTAKE_RUN_TIME = 3000; //In ms
     final double PROPORTIONAL_COEFFIEICENT = 0.01;
     final double INTEGRAL_COEFFICIENT = 0.005;
     final double DERIVATIVE_COEFFICIENT = 0.001;
@@ -347,6 +345,11 @@ public class MainTeleOp extends LinearOpMode {
                 }
             }
 
+            //Debug toggle
+            if (custom_gamepad_1.get_y_just_pressed()) {
+                telemetry_output = !telemetry_output;
+            }
+
             //Update motor rpm
             //x60000 converts from milliseconds to minutes
             flywheel_rpm = (motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR - last_flywheel_revs) / (runtime.milliseconds() - last_rpm_time) * 60000;
@@ -437,7 +440,6 @@ public class MainTeleOp extends LinearOpMode {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
-                    aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_INTAKE_RUN_TIME;
                     pid_last_time = runtime.milliseconds();
                     rpm_error_integral_val = 0;
                     rpm_previous_error = 0;
@@ -445,14 +447,6 @@ public class MainTeleOp extends LinearOpMode {
 
                     //Turn on image processor
                     visionPortal.setProcessorEnabled(tagProcessor, true);
-                }
-
-                //Check if we're done
-                if (runtime.milliseconds() > aimbot_crservo_time_finished) {
-                    action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
-
-                    //Turn off image processor
-                    visionPortal.setProcessorEnabled(tagProcessor, false);
                 }
                 else {
                     if (tagProcessor.getDetections().size() > 0) {
@@ -492,13 +486,11 @@ public class MainTeleOp extends LinearOpMode {
                             if (tag_bearing < -BEARING_RANGE) {
                                 telemetry.addLine("Too far left");
                                 aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
-                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_INTAKE_RUN_TIME;
                             }
                             //We're rotated too far right
                             else if (tag_bearing > BEARING_RANGE) {
                                 telemetry.addLine("Too far right");
                                 aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
-                                aimbot_crservo_time_finished = runtime.milliseconds() + AIMBOT_INTAKE_RUN_TIME;
                             }
                             //Shoot
                             else if (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE) {
@@ -507,7 +499,6 @@ public class MainTeleOp extends LinearOpMode {
                                 aimbot_shooting = true;
                                 telemetry.addData("Exit Velocity", exit_velocity);
                                 telemetry.addData("Flywheel Power", aimbot_flywheel_power);
-                                telemetry.addData("Flywheel Time Remaining", aimbot_crservo_time_finished - runtime.milliseconds());
                             }
 
                             if (aimbot_shooting) {
@@ -581,7 +572,7 @@ public class MainTeleOp extends LinearOpMode {
                 telemetry.addData(key, String.format("%8s", Integer.toBinaryString(action_map.get(key) & 0xFF)).replace(' ', '0'));
             }
 
-            if (TELEMETRY_OUTPUT) {
+            if (telemetry_output) {
                 telemetry.update();
             }
         }
