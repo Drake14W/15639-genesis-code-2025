@@ -118,9 +118,9 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
-    final double FLICKER_DOWN_POS = 0.99;
-    final double FLICKER_UP_POS = .07;
-    boolean telemetry_output = false;
+    final double flicker_down_pos;
+    final double flicker_up_pos;
+    boolean telemetry_output = true;
 
     //RPM Calculations
     final double FLYWHEEL_CPR = 28;
@@ -250,7 +250,6 @@ public class MainTeleOp extends LinearOpMode {
         motors.get("lift_motor2").setDirection(DcMotorSimple.Direction.REVERSE);
 
         //Set direction of servos
-        servos.get("flicker").setDirection(Servo.Direction.FORWARD);
         crservos.get("intake_servo").setDirection(DcMotorSimple.Direction.FORWARD);
 
         //Initialize custom gamepads
@@ -268,7 +267,8 @@ public class MainTeleOp extends LinearOpMode {
         }
 
         //Settings for servos
-        servos.get("flicker").setPosition(FLICKER_DOWN_POS);
+        flicker_down_position = servos.get("flicker").getPosition();
+        flicker_up_position = flicker_down_position + 0.1;
 
         //CRServos Powers
         for (String key : crservos.keySet()) {
@@ -581,6 +581,10 @@ public class MainTeleOp extends LinearOpMode {
                 telemetry.addData(key, crservo_powers.get(key));
                 //Reset motor power
                 crservo_powers.put(key, 0.0);
+            }
+            for (String key : servos.keySet()) {
+                servos.get(key).setPositions(servo_positions.get(key));
+                telemetry.addData(key, servo_positions.get(key));
             }
             for (String key : action_map.keySet()) {
                 telemetry.addData(key, String.format("%8s", Integer.toBinaryString(action_map.get(key) & 0xFF)).replace(' ', '0'));
