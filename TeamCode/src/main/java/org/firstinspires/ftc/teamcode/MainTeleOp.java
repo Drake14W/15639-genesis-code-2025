@@ -118,8 +118,8 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
-    final double FLICKER_DOWN_POS = 0.01;
-    final double FLICKER_UP_POS = 0.1;
+    final double FLICKER_DOWN_POS = 0.99;
+    final double FLICKER_UP_POS = .07;
     boolean telemetry_output = false;
 
     //RPM Calculations
@@ -448,7 +448,6 @@ public class MainTeleOp extends LinearOpMode {
             else {
                 action_map.put("lift", (byte) (action_map.get("lift") & (~ON_BITMASK)));
             }
-
 
             //Check for aimbot macro
             if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
