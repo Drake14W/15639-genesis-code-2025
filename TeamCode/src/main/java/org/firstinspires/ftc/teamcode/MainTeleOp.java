@@ -118,8 +118,8 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
-    final double flicker_down_pos;
-    final double flicker_up_pos;
+    double flicker_down_pos;
+    double flicker_up_pos;
     boolean telemetry_output = true;
 
     //RPM Calculations
@@ -267,8 +267,8 @@ public class MainTeleOp extends LinearOpMode {
         }
 
         //Settings for servos
-        flicker_down_position = servos.get("flicker").getPosition();
-        flicker_up_position = flicker_down_position + 0.1;
+        flicker_down_pos = servos.get("flicker").getPosition();
+        flicker_up_pos = flicker_down_pos + 0.1;
 
         //CRServos Powers
         for (String key : crservos.keySet()) {
@@ -425,11 +425,11 @@ public class MainTeleOp extends LinearOpMode {
             if (check_mask("flicker")) {
                 if (custom_gamepad_2.get_x()) {
                     action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
-                    servo_positions.put("flicker", FLICKER_UP_POS);
+                    servo_positions.put("flicker", flicker_up_pos);
                 }
                 else {
                     action_map.put("flicker", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
-                    servo_positions.put("flicker", FLICKER_DOWN_POS);
+                    servo_positions.put("flicker", flicker_down_pos);
                 }
             }
 
@@ -583,7 +583,7 @@ public class MainTeleOp extends LinearOpMode {
                 crservo_powers.put(key, 0.0);
             }
             for (String key : servos.keySet()) {
-                servos.get(key).setPositions(servo_positions.get(key));
+                servos.get(key).setPosition(servo_positions.get(key));
                 telemetry.addData(key, servo_positions.get(key));
             }
             for (String key : action_map.keySet()) {
