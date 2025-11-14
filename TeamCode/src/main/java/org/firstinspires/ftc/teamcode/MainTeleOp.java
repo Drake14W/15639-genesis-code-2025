@@ -118,6 +118,8 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
+    final double FLICKER_DOWN_POS = 0.01;
+    final double FLICKER_UP_POS = 0.1;
     boolean telemetry_output = false;
 
     //RPM Calculations
@@ -202,6 +204,7 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("manual_flywheel", (byte) 0b00001000);
         action_map.put("manual_intake_servo", (byte) 0b00010000);
         action_map.put("lift", (byte) 0b00100000);
+        action_map.put("flicker", (byte) 0b01000000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -217,6 +220,7 @@ public class MainTeleOp extends LinearOpMode {
         motors.put("lift_motor2", hardwareMap.get(DcMotor.class, "lift_motor2"));
 
         //Create and assign map entries for all servos
+        servos.put("flicker", hardwareMap.get(Servo.class, "flicker"));
 
         //Create and assign map entries for all CRServos
         crservos.put("intake_servo", hardwareMap.get(CRServo.class, "intake_servo"));
@@ -246,6 +250,7 @@ public class MainTeleOp extends LinearOpMode {
         motors.get("lift_motor2").setDirection(DcMotorSimple.Direction.REVERSE);
 
         //Set direction of servos
+        servos.get("flicker").setDirection(Servo.Direction.FORWARD);
         crservos.get("intake_servo").setDirection(DcMotorSimple.Direction.FORWARD);
 
         //Initialize custom gamepads
@@ -263,9 +268,7 @@ public class MainTeleOp extends LinearOpMode {
         }
 
         //Settings for servos
-        for (String key : servos.keySet()) {
-            servo_positions.put(key, 0.0);
-        }
+        servos.get("flicker").setPosition(FLICKER_DOWN_POS);
 
         //CRServos Powers
         for (String key : crservos.keySet()) {
@@ -416,6 +419,18 @@ public class MainTeleOp extends LinearOpMode {
             }
             else {
                 action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") & (~ON_BITMASK)));
+            }
+
+            //Manual flicker control
+            if (check_mask("flicker")) {
+                if (custom_gamepad_2.get_x()) {
+                    action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
+                    servo_positions.put("flicker", FLICKER_UP_POS);
+                }
+                else {
+                    action_map.put("flicker", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
+                    servo_positions.put("flicker", FLICKER_DOWN_POS);
+                }
             }
 
             //Lift control
