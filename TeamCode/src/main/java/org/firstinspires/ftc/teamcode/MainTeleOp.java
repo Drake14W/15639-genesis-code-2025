@@ -118,6 +118,7 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
+    final double FLICKER_DIFF = 0.1;
     double flicker_down_pos;
     double flicker_up_pos;
     boolean telemetry_output = true;
@@ -268,7 +269,7 @@ public class MainTeleOp extends LinearOpMode {
 
         //Settings for servos
         flicker_down_pos = servos.get("flicker").getPosition();
-        flicker_up_pos = flicker_down_pos + 0.1;
+        flicker_up_pos = flicker_down_pos - FLICKER_DIFF;
 
         //CRServos Powers
         for (String key : crservos.keySet()) {
