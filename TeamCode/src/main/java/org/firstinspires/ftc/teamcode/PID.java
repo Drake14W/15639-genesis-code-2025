@@ -33,9 +33,6 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Arrays;
-import java.util.Collections;
-
 //NOTE: ALL DISTANCES ARE IN CENTIMETERS, ALL TIMES ARE IN SECONDS
 public class PID {
     //Create the variables for the motors and initializes a variable that keeps track of how long the opmode has been running
@@ -50,9 +47,9 @@ public class PID {
     //Global speed percentage for rotation
     private final double rotation_coefficient = 50;
 
-    private final double PROPORTIONAL_COEFFIEICENT = 0.05;
-    private final double INTEGRAL_COEFFICIENT = 0.001;
-    private  final double DERIVATIVE_COEFFICIENT = 0.005;
+    private final double PROPORTIONAL_COEFFIEICENT = 0.1;
+    private final double INTEGRAL_COEFFICIENT = 0.0;
+    private  final double DERIVATIVE_COEFFICIENT = 0.0;
 
     private final double ticks_to_cm = (1/537.7)*2*Math.PI*9.6*wheel_coefficient;
     private final double permitted_movement_error = 5;
@@ -120,7 +117,7 @@ public class PID {
 
             max_error = 0;
             for (int i = 0; i < 4; i++) {
-                if (errors[i] > max_error) {
+                if (Math.abs(errors[i]) > Math.abs(max_error)) {
                     max_error = errors[i];
                 }
             }
@@ -176,7 +173,7 @@ public class PID {
 
             max_error = 0;
             for (int i = 0; i < 4; i++) {
-                if (errors[i] > max_error) {
+                if (Math.abs(errors[i]) > Math.abs(max_error)) {
                     max_error = errors[i];
                 }
             }

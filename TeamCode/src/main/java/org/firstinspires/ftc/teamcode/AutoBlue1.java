@@ -215,6 +215,8 @@ public class AutoBlue1 extends LinearOpMode {
                         aimbot_intake_crservo_power = 0;
                         aimbot_intake_power = 0;
                     }
+
+
                 }
                 //GGs, we've fucked up
                 else {
@@ -402,7 +404,6 @@ public class AutoBlue1 extends LinearOpMode {
 
         //Rotate to face goal
         pid.rotate(-30);
-        sleep(2000);
         aimbot();
 
         //Move off line

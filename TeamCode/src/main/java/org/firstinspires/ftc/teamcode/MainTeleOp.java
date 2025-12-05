@@ -44,11 +44,17 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+import org.threeten.bp.chrono.ChronoLocalDateTime;
 
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.lang.Math;
 import java.util.concurrent.TimeUnit;
+import android.os.Environment;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.LocalTime;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
 @TeleOp(name="MainTeleOp", group="Linear OpMode")
@@ -195,9 +201,16 @@ public class MainTeleOp extends LinearOpMode {
     double rpm_previous_error;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
 
+    //To log data for PID tuning
+    StringBuffer m_csvLogString = new StringBuffer();
+    private static final String DATE_FORMAT_NOW = "yyyy-MM-dd_HH-mm-ss";
+
     //We have to override this function since it has already been defined in the parent class LinearOpMode
     @Override
     public void runOpMode() {
+        //Create log buffer
+        m_csvLogString.setLength(0);
+
         //Add actions to hashmap
         action_map.put("manual_movement", (byte) 0b00000001);
         action_map.put("trigger_rotation", (byte) 0b00000010);
@@ -565,6 +578,8 @@ public class MainTeleOp extends LinearOpMode {
                                 aimbot_intake_power = 0;
                             }
                         }
+                        //Log data for PID tuning purposes
+                        m_csvLogString.append(runtime.milliseconds()).append(", ").append(flywheel_rpm).append(", ").append(aimbot_needed_flywheel_rpm).append("\n");
                     }
                 }
             }
@@ -636,5 +651,13 @@ public class MainTeleOp extends LinearOpMode {
                 telemetry.update();
             }
         }
+        if (m_csvLogString.length() > 0) {
+            String csvPath = String.format("%s/FIRST/data/flywheel_data_" + LocalTime.now().toString().replace(":", "-") + ".csv", Environment.getExternalStorageDirectory().getAbsolutePath());
+            try (FileWriter csvWriter = new FileWriter(csvPath, false)) {
+                csvWriter.write(m_csvLogString.toString());
+            }
+            catch (IOException e) {
+                telemetry.addLine(e.getMessage());
+            }
     }
 }
