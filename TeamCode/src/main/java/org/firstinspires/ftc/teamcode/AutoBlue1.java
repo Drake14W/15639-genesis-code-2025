@@ -72,7 +72,7 @@ public class AutoBlue1 extends LinearOpMode {
     double tag_range;
     double tag_elevation;
     double tag_bearing;
-    final double BEARING_RANGE = 5*(Math.PI/180); //We accept +/- 3 degrees when aiming
+    final double BEARING_RANGE = 5*(Math.PI/180); //We accept +/- 5 degrees when aiming
     final double APRIL_TAG_ROTATION_SPEED = 0.1;
     final double APRIL_TAG_PERMITTED_DELAY = 0.2; //We allow 0.2 seconds of delay between detecting the april tag and acting upon it, otherwise we ignore it
 
@@ -97,7 +97,8 @@ public class AutoBlue1 extends LinearOpMode {
     final double EXIT_HEIGHT = 21;
     final double EXIT_ANGLE = Math.toRadians(50);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 5.25;
+    final double MAGIC_FLYWHEEL_NUMBER = 5.5;
+    final double AIMBOT_CORRECTION = 3*(Math.PI/180);
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double AIMBOT_PROPORTIONAL_COEFFIEICENT = 0.00005;
@@ -178,12 +179,12 @@ public class AutoBlue1 extends LinearOpMode {
                     telemetry.addData("RPM Error", flywheel_rpm_error);
                     telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                     //We're rotated too far left
-                    if (tag_bearing < -BEARING_RANGE) {
+                    if (tag_bearing < -(BEARING_RANGE-AIMBOT_CORRECTION)) {
                         telemetry.addLine("Too far left");
                         aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
                     }
                     //We're rotated too far right
-                    else if (tag_bearing > BEARING_RANGE) {
+                    else if (tag_bearing > (BEARING_RANGE+AIMBOT_CORRECTION)) {
                         telemetry.addLine("Too far right");
                         aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
                     }
@@ -422,7 +423,7 @@ public class AutoBlue1 extends LinearOpMode {
         motors.get("back_left").setPower(-0.25);
         motors.get("front_right").setPower(0.25);
         motors.get("back_right").setPower(0.25);
-        sleep(1000);
+        sleep(600);
         motors.get("front_left").setPower(0);
         motors.get("back_left").setPower(0);
         motors.get("front_right").setPower(0);
@@ -431,16 +432,6 @@ public class AutoBlue1 extends LinearOpMode {
         aimbot();
 
         //Move off line
-        //pid.rotate(50);
-        motors.get("front_left").setPower(0.25);
-        motors.get("back_left").setPower(0.25);
-        motors.get("front_right").setPower(-0.25);
-        motors.get("back_right").setPower(-0.25);
-        sleep(1500);
-        motors.get("front_left").setPower(0);
-        motors.get("back_left").setPower(0);
-        motors.get("front_right").setPower(0);
-        motors.get("back_right").setPower(0);
         pid.move(15);
     }
 }

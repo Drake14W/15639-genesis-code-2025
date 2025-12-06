@@ -24,7 +24,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
-@Autonomous(name="AutoBlue1", group="Linear OpMode")
+@Autonomous(name="AutoRed1", group="Linear OpMode")
 public class AutoRed1 extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
 
@@ -97,7 +97,8 @@ public class AutoRed1 extends LinearOpMode {
     final double EXIT_HEIGHT = 21;
     final double EXIT_ANGLE = Math.toRadians(50);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 5.25;
+    final double MAGIC_FLYWHEEL_NUMBER = 5.5;
+    final double AIMBOT_CORRECTION = 3*(Math.PI/180);
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double AIMBOT_PROPORTIONAL_COEFFIEICENT = 0.00005;
@@ -178,12 +179,12 @@ public class AutoRed1 extends LinearOpMode {
                     telemetry.addData("RPM Error", flywheel_rpm_error);
                     telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                     //We're rotated too far left
-                    if (tag_bearing < -BEARING_RANGE) {
+                    if (tag_bearing < -(BEARING_RANGE+AIMBOT_CORRECTION)) {
                         telemetry.addLine("Too far left");
                         aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
                     }
                     //We're rotated too far right
-                    else if (tag_bearing > BEARING_RANGE) {
+                    else if (tag_bearing > (BEARING_RANGE-AIMBOT_CORRECTION)) {
                         telemetry.addLine("Too far right");
                         aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
                     }
@@ -401,7 +402,6 @@ public class AutoRed1 extends LinearOpMode {
         //Create the PID controller
         PID pid = new PID(motors.get("front_left"), motors.get("back_left"), motors.get("front_right"), motors.get("back_right"), telemetry);
 
-        //This data is displayed on the driver hub console
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
@@ -422,7 +422,7 @@ public class AutoRed1 extends LinearOpMode {
         motors.get("back_left").setPower(0.25);
         motors.get("front_right").setPower(-0.25);
         motors.get("back_right").setPower(-0.25);
-        sleep(1000);
+        sleep(600);
         motors.get("front_left").setPower(0);
         motors.get("back_left").setPower(0);
         motors.get("front_right").setPower(0);
@@ -431,16 +431,6 @@ public class AutoRed1 extends LinearOpMode {
         aimbot();
 
         //Move off line
-        //pid.rotate(50);
-        motors.get("front_left").setPower(-0.25);
-        motors.get("back_left").setPower(-0.25);
-        motors.get("front_right").setPower(0.25);
-        motors.get("back_right").setPower(0.25);
-        sleep(1500);
-        motors.get("front_left").setPower(0);
-        motors.get("back_left").setPower(0);
-        motors.get("front_right").setPower(0);
-        motors.get("back_right").setPower(0);
         pid.move(15);
     }
 }

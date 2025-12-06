@@ -125,6 +125,7 @@ public class MainTeleOp extends LinearOpMode {
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
     final double LIFT_POWER = 1.0;
     final double LIFT_SUSTAIN_POWER = 0.4;
+    final double LIFT_LOWER_POWER = 0.15;
     boolean lift_active = false;
     double flicker_down_pos;
     double flicker_mid_pos;
@@ -188,7 +189,7 @@ public class MainTeleOp extends LinearOpMode {
     final double EXIT_HEIGHT = 21;
     final double EXIT_ANGLE = Math.toRadians(50);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 5.5;
+    final double MAGIC_FLYWHEEL_NUMBER = 5.25;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double PROPORTIONAL_COEFFIEICENT = 0.00005;
@@ -443,6 +444,11 @@ public class MainTeleOp extends LinearOpMode {
                 crservo_powers.put("intake_servo1", INTAKE_SERVO_SPEED * custom_gamepad_2.get_right_trigger());
                 crservo_powers.put("intake_servo2", INTAKE_SERVO_SPEED * custom_gamepad_2.get_right_trigger());
             }
+            else if (check_mask("manual_intake_servo") && (custom_gamepad_2.get_left_trigger() > 0)) {
+                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") | ON_BITMASK));
+                crservo_powers.put("intake_servo1", -INTAKE_SERVO_SPEED * custom_gamepad_2.get_left_trigger());
+                crservo_powers.put("intake_servo2", -INTAKE_SERVO_SPEED * custom_gamepad_2.get_left_trigger());
+            }
             else {
                 action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") & (~ON_BITMASK)));
             }
@@ -475,8 +481,8 @@ public class MainTeleOp extends LinearOpMode {
                 lift_active = true;
             }
             else if (custom_gamepad_1.get_left_bumper()) {  //lift down
-                motor_powers.put("lift_motor1", -LIFT_POWER);
-                motor_powers.put("lift_motor2", -LIFT_POWER);
+                motor_powers.put("lift_motor1", LIFT_LOWER_POWER);
+                motor_powers.put("lift_motor2", LIFT_LOWER_POWER);
                 lift_active = true;
             }
             else if (lift_active){  //Sustains lift anytime lift is being active
