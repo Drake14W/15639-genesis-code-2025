@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
 @Autonomous(name="AutoBlue1", group="Linear OpMode")
-public class AutoBlue1 extends LinearOpMode {
+public class AutoRed1 extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
 
     //Map of all motors
@@ -140,7 +140,7 @@ public class AutoBlue1 extends LinearOpMode {
                     continue;
                 }
                 //1000000000 converts from nanoseconds to seconds
-                if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == 20)) {
+                if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == 24)) {
                     //Scan the tag
                     telemetry.addData("ID", tag.metadata.id);
                     tag_bearing = tag.ftcPose.bearing;
@@ -418,10 +418,10 @@ public class AutoBlue1 extends LinearOpMode {
 
         //Rotate to face goal
         //pid.rotate(-30);
-        motors.get("front_left").setPower(-0.25);
-        motors.get("back_left").setPower(-0.25);
-        motors.get("front_right").setPower(0.25);
-        motors.get("back_right").setPower(0.25);
+        motors.get("front_left").setPower(0.25);
+        motors.get("back_left").setPower(0.25);
+        motors.get("front_right").setPower(-0.25);
+        motors.get("back_right").setPower(-0.25);
         sleep(1000);
         motors.get("front_left").setPower(0);
         motors.get("back_left").setPower(0);
@@ -432,10 +432,10 @@ public class AutoBlue1 extends LinearOpMode {
 
         //Move off line
         //pid.rotate(50);
-        motors.get("front_left").setPower(0.25);
-        motors.get("back_left").setPower(0.25);
-        motors.get("front_right").setPower(-0.25);
-        motors.get("back_right").setPower(-0.25);
+        motors.get("front_left").setPower(-0.25);
+        motors.get("back_left").setPower(-0.25);
+        motors.get("front_right").setPower(0.25);
+        motors.get("back_right").setPower(0.25);
         sleep(1500);
         motors.get("front_left").setPower(0);
         motors.get("back_left").setPower(0);

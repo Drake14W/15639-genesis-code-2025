@@ -191,9 +191,9 @@ public class MainTeleOp extends LinearOpMode {
     final double MAGIC_FLYWHEEL_NUMBER = 5.5;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
-    final double PROPORTIONAL_COEFFIEICENT = 0.002;
-    final double INTEGRAL_COEFFICIENT = 0.0015;
-    final double DERIVATIVE_COEFFICIENT = 0.0045;
+    final double PROPORTIONAL_COEFFIEICENT = 0.00005;
+    final double INTEGRAL_COEFFICIENT = 0.00001;
+    final double DERIVATIVE_COEFFICIENT = 0.0005;
     double rpm_error_integral_val;
     double rpm_error_deriv_val;
     double pid_time_delta;
@@ -503,6 +503,7 @@ public class MainTeleOp extends LinearOpMode {
                     rpm_error_integral_val = 0;
                     rpm_previous_error = 0;
                     aimbot_shooting = false;
+                    aimbot_flywheel_power = 0;
 
                     //Turn on image processor
                     visionPortal.setProcessorEnabled(tagProcessor, true);
@@ -516,7 +517,7 @@ public class MainTeleOp extends LinearOpMode {
                             continue;
                         }
                         //1000000000 converts from nanoseconds to seconds
-                        if (((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) {
+                        if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && ((tag.id == 20) || (tag.id == 24))) {
                             //Scan the tag
                             telemetry.addData("ID", tag.metadata.id);
                             tag_bearing = tag.ftcPose.bearing;
@@ -539,10 +540,13 @@ public class MainTeleOp extends LinearOpMode {
                             pid_last_time = runtime.milliseconds();
                             rpm_previous_error = flywheel_rpm_error;
 
-                            aimbot_flywheel_power = PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
+                            aimbot_flywheel_power += PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
 
                             if (aimbot_flywheel_power < 0) {
                                 aimbot_flywheel_power = 0;
+                            }
+                            if (aimbot_flywheel_power > 1) {
+                                aimbot_flywheel_power = 1;
                             }
 
                             aimbot_intake_crservo_power = 0;
@@ -579,7 +583,7 @@ public class MainTeleOp extends LinearOpMode {
                             }
                         }
                         //Log data for PID tuning purposes
-                        m_csvLogString.append(runtime.milliseconds()).append(", ").append(flywheel_rpm).append(", ").append(aimbot_needed_flywheel_rpm).append("\n");
+                        m_csvLogString.append(runtime.milliseconds()).append(", ").append(flywheel_rpm).append(", ").append(aimbot_needed_flywheel_rpm).append(", ").append(aimbot_flywheel_power).append("\n");
                     }
                 }
             }
@@ -626,6 +630,19 @@ public class MainTeleOp extends LinearOpMode {
                 crservo_powers.put("intake_servo2", aimbot_intake_crservo_power);
             }
 
+            if (custom_gamepad_1.get_b()) {
+                if (m_csvLogString.length() > 0) {
+                    String csvPath = String.format("%s/FIRST/data/flywheel_data_.csv", Environment.getExternalStorageDirectory().getAbsolutePath());
+                    try (FileWriter csvWriter = new FileWriter(csvPath, false)) {
+                        csvWriter.write(m_csvLogString.toString());
+                    } catch (IOException e) {
+                        telemetry.addLine(e.getMessage());
+                        telemetry.update();
+                    }
+                }
+                sleep(5000);
+            }
+
             //Execute powers
             for (String key : motor_powers.keySet()) {
                 motors.get(key).setPower(motor_powers.get(key));
@@ -651,13 +668,5 @@ public class MainTeleOp extends LinearOpMode {
                 telemetry.update();
             }
         }
-        if (m_csvLogString.length() > 0) {
-            String csvPath = String.format("%s/FIRST/data/flywheel_data_" + LocalTime.now().toString().replace(":", "-") + ".csv", Environment.getExternalStorageDirectory().getAbsolutePath());
-            try (FileWriter csvWriter = new FileWriter(csvPath, false)) {
-                csvWriter.write(m_csvLogString.toString());
-            }
-            catch (IOException e) {
-                telemetry.addLine(e.getMessage());
-            }
     }
 }

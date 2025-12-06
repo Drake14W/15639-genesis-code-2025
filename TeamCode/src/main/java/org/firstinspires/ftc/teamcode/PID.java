@@ -45,18 +45,18 @@ public class PID {
     //Global speed percentage for movement
     private final double wheel_coefficient = 0.1;
     //Global speed percentage for rotation
-    private final double rotation_coefficient = 50;
+    private final double rotation_coefficient = 0.2;
 
-    private final double PROPORTIONAL_COEFFIEICENT = 0.1;
+    private final double PROPORTIONAL_COEFFIEICENT = 4.0;
     private final double INTEGRAL_COEFFICIENT = 0.0;
     private  final double DERIVATIVE_COEFFICIENT = 0.0;
 
     private final double ticks_to_cm = (1/537.7)*2*Math.PI*9.6*wheel_coefficient;
     private final double permitted_movement_error = 5;
-    private final double permitted_angle_error = 5;
+    private final double permitted_angle_error = 3;
     private final double ticks_to_degree = (1/537.7)*2*Math.PI*9.6*rotation_coefficient;
     private final double max_motor_power = 0.5;
-    private final double max_rotation_power = 0.25;
+    private final double max_rotation_power = 0.75;
 
     private Telemetry telemetry;
 
@@ -88,13 +88,13 @@ public class PID {
         double motor_power;
 
         for (int i = 0; i < 4; i++) {
-            motor_start_pos[i] = motors.get(motor_indexes[i]).getCurrentPosition()*ticks_to_cm;
+            motor_start_pos[i] = motors.get(motor_indexes[i]).getCurrentPosition();
         }
 
         while ((max_error > permitted_movement_error) || (max_error < -permitted_movement_error)) {
             pid_time_delta = runtime.milliseconds() - pid_last_time;
             for (int i = 0; i < 4; i++) {
-                errors[i] = distance - (motors.get(motor_indexes[i]).getCurrentPosition()*ticks_to_cm - motor_start_pos[i]);
+                errors[i] = distance - (motors.get(motor_indexes[i]).getCurrentPosition() - motor_start_pos[i])*ticks_to_cm;
                 error_integral_val[i] = errors[i]*pid_time_delta;
                 error_deriv_val[i] = (errors[i] - previous_error[i]) / pid_time_delta;
                 previous_error[i] = errors[i];
@@ -140,13 +140,18 @@ public class PID {
         double motor_power;
 
         for (int i = 0; i < 4; i++) {
-            motor_start_pos[i] = motors.get(motor_indexes[i]).getCurrentPosition()*ticks_to_degree;
+            motor_start_pos[i] = motors.get(motor_indexes[i]).getCurrentPosition();
         }
 
         while ((max_error > permitted_angle_error) || (max_error < -permitted_angle_error)) {
             pid_time_delta = runtime.milliseconds() - pid_last_time;
             for (int i = 0; i < 4; i++) {
-                errors[i] = degrees - (motors.get(motor_indexes[i]).getCurrentPosition()*ticks_to_degree - motor_start_pos[i]);
+                if (i <= 2) {
+                    errors[i] = degrees - (motors.get(motor_indexes[i]).getCurrentPosition() - motor_start_pos[i]) * ticks_to_degree;
+                }
+                else {
+                    errors[i] = degrees - (motor_start_pos[i] - motors.get(motor_indexes[i]).getCurrentPosition()) * ticks_to_degree;
+                }
                 error_integral_val[i] = errors[i]*pid_time_delta;
                 error_deriv_val[i] = (errors[i] - previous_error[i]) / pid_time_delta;
                 previous_error[i] = errors[i];
@@ -159,6 +164,11 @@ public class PID {
                 else if (motor_power < -max_rotation_power) {
                     motor_power = -max_rotation_power;
                 }
+
+                if (i == 2) {
+                    motor_power*=1.25;
+                }
+
                 telemetry.addData("Motor Power:", motor_power);
                 telemetry.addData("Error:", errors[i]);
 
