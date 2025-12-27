@@ -44,17 +44,14 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
-import org.threeten.bp.chrono.ChronoLocalDateTime;
 
 
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.lang.Math;
 import java.util.concurrent.TimeUnit;
 import android.os.Environment;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.time.LocalTime;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
 @TeleOp(name="MainTeleOp", group="Linear OpMode")
@@ -160,13 +157,24 @@ public class MainTeleOp extends LinearOpMode {
     //Camera and AprilTag stuff
     AprilTagProcessor tagProcessor;
     VisionPortal visionPortal;
-    AprilTagDetection tag;
+    AprilTagDetection current_tag;
     double tag_range;
     double tag_elevation;
     double tag_bearing;
     final double BEARING_RANGE = 3*(Math.PI/180); //We accept +/- 3 degrees when aiming
     final double APRIL_TAG_ROTATION_SPEED = 0.1;
     final double APRIL_TAG_PERMITTED_DELAY = 0.2; //We allow 0.2 seconds of delay between detecting the april tag and acting upon it, otherwise we ignore it
+    boolean alliance = true; //true = red and false = blue
+
+    //Target tracking
+    double cam_servo_pos_deg;
+    double prev_servo_pos;
+    double time_diff;
+    double start_time;
+    double time_needed;
+    double robot_bearing;
+    final double SERVO_RANGE = 300; //Degrees
+    final double ASSUMED_SERVO_RPM = 20;
 
     //Movement values for aimbot (april tag) macro
     double aimbot_macro_yaw;
@@ -237,6 +245,7 @@ public class MainTeleOp extends LinearOpMode {
 
         //Create and assign map entries for all servos
         servos.put("flicker", hardwareMap.get(Servo.class, "flicker"));
+        servos.put("cam_servo", hardwareMap.get(Servo.class, "cam_servo"));
 
         //Create and assign map entries for all CRServos
         crservos.put("intake_servo1", hardwareMap.get(CRServo.class, "intake_servo1"));
@@ -295,6 +304,9 @@ public class MainTeleOp extends LinearOpMode {
         flicker_mid_pos = 0.12;
         flicker_up_pos = 0.0;
 
+        //Get cam servo position
+        servo_positions.put("cam_servo", servos.get("cam_servo").getPosition());
+        prev_servo_pos = servo_positions.get("cam_servo");
 
         //CRServos Powers
         for (String key : crservos.keySet()) {
@@ -325,8 +337,8 @@ public class MainTeleOp extends LinearOpMode {
                 //as above
                 .build();
 
-        //Disable processor to start (conserve bandwidth)
-        visionPortal.setProcessorEnabled(tagProcessor, false);
+        //Turn on image processor
+        visionPortal.setProcessorEnabled(tagProcessor, true);
 
         //Wait for camera to start up
         while (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
@@ -358,6 +370,10 @@ public class MainTeleOp extends LinearOpMode {
         //Reset runtime var
         runtime.reset();
 
+        //Give starting point for target tracking
+        start_time = runtime.seconds();
+        time_needed = 0;
+
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
             //Update gamepad input
@@ -375,8 +391,16 @@ public class MainTeleOp extends LinearOpMode {
             }
 
             //Debug toggle
-            if (custom_gamepad_1.get_y_just_pressed()) {
+            if (custom_gamepad_1.get_a_just_pressed()) {
                 telemetry_output = !telemetry_output;
+            }
+
+            //Alliance toggle
+            if (custom_gamepad_2.get_x()) {
+                alliance = false;
+            }
+            else if (custom_gamepad_2.get_b()) {
+                alliance = true;
             }
 
             //Update motor rpm
@@ -455,11 +479,11 @@ public class MainTeleOp extends LinearOpMode {
 
             //Manual flicker control gamepad1
             if (check_mask("flicker")) {
-                if (custom_gamepad_2.get_x()) {
+                if (custom_gamepad_2.get_y()) {
                     action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
                     servo_positions.put("flicker", flicker_up_pos);
                 }
-                else if (custom_gamepad_2.get_y()) {
+                else if (custom_gamepad_2.get_a()) {
                     action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
                     servo_positions.put("flicker", flicker_mid_pos);
                 }
@@ -470,7 +494,7 @@ public class MainTeleOp extends LinearOpMode {
             }
 
             //Auto Lift Control
-            if (custom_gamepad_1.get_right_bumper() && custom_gamepad_1.get_left_bumper()) {  //lift up
+            if (custom_gamepad_1.get_right_bumper() && custom_gamepad_1.get_left_bumper()) {  //Drop Lift
                 motor_powers.put("lift_motor1", 0.0);
                 motor_powers.put("lift_motor2", 0.0);
                 lift_active = false;
@@ -500,6 +524,52 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("lift", (byte) (action_map.get("lift") & (~ON_BITMASK)));
             }
 
+            //Track the target
+            if (tagProcessor.getDetections().size() > 0) {
+                try {
+                    current_tag = tagProcessor.getDetections().get(0);
+                } catch (Exception ignored) {
+                    ;
+                }
+                if (current_tag != null) {
+                    if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
+                        //Scan the tag
+                        telemetry.addData("ID", current_tag.metadata.id);
+                        tag_bearing = current_tag.ftcPose.bearing;
+                        tag_elevation = current_tag.ftcPose.elevation;
+                        tag_range = current_tag.ftcPose.range;
+
+                        if (Math.abs(tag_bearing) <= ((360 - SERVO_RANGE) / 2)) {
+                            servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing) / SERVO_RANGE + 1/2);
+                        }
+                        else {
+                            servo_positions.put("cam_servo", -Math.signum(cam_servo_pos_deg) * SERVO_RANGE / 2);
+                        }
+
+                        if (servo_positions.get("cam_servo") > 1.0) {
+                            servo_positions.put("cam_servo", 1.0);
+                        }
+                        else if (servo_positions.get("cam_servo") < 0.0) {
+                            servo_positions.put("cam_servo", 0.0);
+                        }
+
+                        time_diff = runtime.seconds() - start_time;
+
+                        if ((time_diff > time_needed) || (Math.abs(tag_bearing) < (360-SERVO_RANGE)/2)) {
+                            prev_servo_pos = servo_positions.get("cam_servo");
+                            cam_servo_pos_deg = SERVO_RANGE * (servo_positions.get("cam_servo") - 1/2);
+                            time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
+                            start_time = runtime.seconds();
+                        }
+                        else {
+                            servo_positions.put("cam_servo", prev_servo_pos);
+                        }
+
+                        robot_bearing = cam_servo_pos_deg - tag_bearing;
+                    }
+                }
+            }
+
             //Check for aimbot macro (EVAN CHANGED the button FROM gamepad2 to 1)
             if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
                 //If this is fresh
@@ -510,26 +580,11 @@ public class MainTeleOp extends LinearOpMode {
                     rpm_previous_error = 0;
                     aimbot_shooting = false;
                     aimbot_flywheel_power = 0;
-
-                    //Turn on image processor
-                    visionPortal.setProcessorEnabled(tagProcessor, true);
                 }
                 else {
-                    if (tagProcessor.getDetections().size() > 0) {
-                        try {
-                            tag = tagProcessor.getDetections().get(0);
-                        }
-                        catch (Exception e){
-                            continue;
-                        }
+                    if (current_tag != null) {
                         //1000000000 converts from nanoseconds to seconds
-                        if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && ((tag.id == 20) || (tag.id == 24))) {
-                            //Scan the tag
-                            telemetry.addData("ID", tag.metadata.id);
-                            tag_bearing = tag.ftcPose.bearing;
-                            tag_elevation = tag.ftcPose.elevation;
-                            tag_range = tag.ftcPose.range;
-
+                        if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
                             //Get the flywheel running and PID this motherfucker (XD alright)
                             //Calculate exit velocity we need
                             exit_velocity = (tag_range + BUCKET_WIDTH) * Math.sqrt((GRAVITY * 100) / (2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT - EXIT_HEIGHT))));
@@ -561,12 +616,12 @@ public class MainTeleOp extends LinearOpMode {
                             telemetry.addData("RPM Error", flywheel_rpm_error);
                             telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                             //We're rotated too far left
-                            if (tag_bearing < -BEARING_RANGE) {
+                            if (robot_bearing < -BEARING_RANGE) {
                                 telemetry.addLine("Too far left");
                                 aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
                             }
                             //We're rotated too far right
-                            else if (tag_bearing > BEARING_RANGE) {
+                            else if (robot_bearing > BEARING_RANGE) {
                                 telemetry.addLine("Too far right");
                                 aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
                             }
@@ -596,9 +651,6 @@ public class MainTeleOp extends LinearOpMode {
             if (custom_gamepad_2.get_dpad_down()) {
                 //Turn off macro
                 action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
-
-                //Turn off image processor
-                visionPortal.setProcessorEnabled(tagProcessor, false);
             }
 
             //Execute state actions

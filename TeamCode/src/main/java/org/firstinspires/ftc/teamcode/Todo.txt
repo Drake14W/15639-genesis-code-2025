@@ -1,5 +1,4 @@
- - Webcam on servo
- - Synchro cockblocker
  - Fix wheel PID
  - Fix flywheel PID
  - Add more balls to auto
+ - Clean auto code the fuck up
