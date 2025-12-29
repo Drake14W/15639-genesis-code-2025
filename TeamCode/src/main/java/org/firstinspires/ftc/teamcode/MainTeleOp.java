@@ -287,10 +287,10 @@ public class MainTeleOp extends LinearOpMode {
         //Turn on the brakes for 0 power
         for (String key : motors.keySet()) {
             if (key == "flywheel") {
-                motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+                motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             }
             else {
-                motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+                motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             }
         }
 
@@ -365,10 +365,10 @@ public class MainTeleOp extends LinearOpMode {
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
-        last_rpm_time = runtime.milliseconds();
-
         //Reset runtime var
         runtime.reset();
+
+        last_rpm_time = runtime.milliseconds();
 
         //Give starting point for target tracking
         start_time = runtime.seconds();
