@@ -127,7 +127,7 @@ public class FlywheelOptimizer extends LinearOpMode {
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
-        for (double lambda_val = 5.0; lambda_val > 0.0; lambda_val+=0.2) {
+        for (double lambda_val = 5.0; lambda_val > 4.8; lambda_val+=0.2) {
             kp = 1.0 / lambda_val;
             ki = 1.0 / Math.pow(lambda_val, 2);
             for (int i = 0; i < iters; i++) {

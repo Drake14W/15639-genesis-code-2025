@@ -75,121 +75,14 @@ public class PID {
         this.telemetry = telemetry;
     }
 
-    public void move(double distance) {
-        //For all, order is front_left, back_left, front_right, back_right
-        double[] motor_start_pos = {0, 0, 0, 0};
-        double[] errors = {0, 0, 0, 0};
-        double[] error_integral_val = {0, 0, 0, 0};
-        double[] error_deriv_val = {0, 0, 0, 0};
-        double pid_time_delta;
-        double pid_last_time = runtime.milliseconds();
-        double[] previous_error = {distance, distance, distance, distance};
-        double max_error = distance;
-        double motor_power;
+    public void moveFB(double distance) {
 
-        for (int i = 0; i < 4; i++) {
-            motor_start_pos[i] = motors.get(motor_indexes[i]).getCurrentPosition();
-        }
+    }
+    public void moveRL(double distance) {
 
-        while ((max_error > permitted_movement_error) || (max_error < -permitted_movement_error)) {
-            pid_time_delta = runtime.milliseconds() - pid_last_time;
-            for (int i = 0; i < 4; i++) {
-                errors[i] = distance - (motors.get(motor_indexes[i]).getCurrentPosition() - motor_start_pos[i])*ticks_to_cm;
-                error_integral_val[i] = errors[i]*pid_time_delta;
-                error_deriv_val[i] = (errors[i] - previous_error[i]) / pid_time_delta;
-                previous_error[i] = errors[i];
-
-                motor_power = PROPORTIONAL_COEFFIEICENT * errors[i] + INTEGRAL_COEFFICIENT * error_integral_val[i] + DERIVATIVE_COEFFICIENT * error_deriv_val[i];
-
-                if (motor_power > max_motor_power) {
-                    motor_power = max_motor_power;
-                }
-                else if (motor_power < -max_motor_power) {
-                    motor_power = -max_motor_power;
-                }
-
-                telemetry.addData("Motor Power:", motor_power);
-                telemetry.addData("Error:", errors[i]);
-
-                motors.get(motor_indexes[i]).setPower(motor_power);
-            }
-            pid_last_time = runtime.milliseconds();
-
-            max_error = 0;
-            for (int i = 0; i < 4; i++) {
-                if (Math.abs(errors[i]) > Math.abs(max_error)) {
-                    max_error = errors[i];
-                }
-            }
-
-            telemetry.update();
-        }
     }
 
     //0 degrees is directly forward. To the left is negative
     public void rotate(double degrees) {
-        //For all, order is front_left, back_left, front_right, back_right
-        double[] motor_start_pos = {0, 0, 0, 0};
-        double[] errors = {0, 0, 0, 0};
-        double[] error_integral_val = {0, 0, 0, 0};
-        double[] error_deriv_val = {0, 0, 0, 0};
-        double pid_time_delta;
-        double pid_last_time = runtime.milliseconds();
-        double[] previous_error = {degrees, degrees, degrees, degrees};
-        double max_error = degrees;
-        double motor_power;
-
-        for (int i = 0; i < 4; i++) {
-            motor_start_pos[i] = motors.get(motor_indexes[i]).getCurrentPosition();
-        }
-
-        while ((max_error > permitted_angle_error) || (max_error < -permitted_angle_error)) {
-            pid_time_delta = runtime.milliseconds() - pid_last_time;
-            for (int i = 0; i < 4; i++) {
-                if (i <= 2) {
-                    errors[i] = degrees - (motors.get(motor_indexes[i]).getCurrentPosition() - motor_start_pos[i]) * ticks_to_degree;
-                }
-                else {
-                    errors[i] = degrees - (motor_start_pos[i] - motors.get(motor_indexes[i]).getCurrentPosition()) * ticks_to_degree;
-                }
-                error_integral_val[i] = errors[i]*pid_time_delta;
-                error_deriv_val[i] = (errors[i] - previous_error[i]) / pid_time_delta;
-                previous_error[i] = errors[i];
-
-                motor_power = PROPORTIONAL_COEFFIEICENT * errors[i] + INTEGRAL_COEFFICIENT * error_integral_val[i] + DERIVATIVE_COEFFICIENT * error_deriv_val[i];
-
-                if (motor_power > max_rotation_power) {
-                    motor_power = max_rotation_power;
-                }
-                else if (motor_power < -max_rotation_power) {
-                    motor_power = -max_rotation_power;
-                }
-
-                if (i == 2) {
-                    motor_power*=1.25;
-                }
-
-                telemetry.addData("Motor Power:", motor_power);
-                telemetry.addData("Error:", errors[i]);
-
-                if (i <= 2) {
-                    motors.get(motor_indexes[i]).setPower(motor_power);
-                }
-                else {
-                    motors.get(motor_indexes[i]).setPower(-motor_power);
-                }
-            }
-            pid_last_time = runtime.milliseconds();
-
-            max_error = 0;
-            for (int i = 0; i < 4; i++) {
-                if (Math.abs(errors[i]) > Math.abs(max_error)) {
-                    max_error = errors[i];
-                }
-            }
-
-            telemetry.addLine("Rotating");
-            telemetry.update();
-        }
     }
 }

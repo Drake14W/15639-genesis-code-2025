@@ -409,29 +409,16 @@ public class AutoBlue1 extends LinearOpMode {
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
-        last_rpm_time = runtime.milliseconds();
-
         //Reset runtime var
         runtime.reset();
 
-        //Move off wall
-        pid.move(10);
+        last_rpm_time = runtime.milliseconds();
 
-        //Rotate to face goal
-        //pid.rotate(-30);
-        motors.get("front_left").setPower(-0.25);
-        motors.get("back_left").setPower(-0.25);
-        motors.get("front_right").setPower(0.25);
-        motors.get("back_right").setPower(0.25);
-        sleep(600);
-        motors.get("front_left").setPower(0);
-        motors.get("back_left").setPower(0);
-        motors.get("front_right").setPower(0);
-        motors.get("back_right").setPower(0);
-        aimbot_flywheel_power = 0;
-        aimbot();
-
-        //Move off line
-        pid.move(15);
+        while (opModeIsActive()) {
+            //Get the target
+            //Step action (movement, aimbot, etc) from where the cursor currently is in the list of actions
+            //If function returns "done" signal, move the cursor to the next function
+            //Apply motor powers
+        }
     }
 }
