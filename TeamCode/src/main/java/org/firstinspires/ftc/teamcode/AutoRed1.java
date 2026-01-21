@@ -408,13 +408,13 @@ public class AutoRed1 extends LinearOpMode {
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
-        last_rpm_time = runtime.milliseconds();
-
         //Reset runtime var
         runtime.reset();
 
+        last_rpm_time = runtime.milliseconds();
+
         //Move off wall
-        pid.move(10);
+        //pid.move(10);
 
         //Rotate to face goal
         //pid.rotate(-30);
@@ -431,6 +431,6 @@ public class AutoRed1 extends LinearOpMode {
         aimbot();
 
         //Move off line
-        pid.move(15);
+        //pid.move(15);
     }
 }
