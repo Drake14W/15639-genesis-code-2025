@@ -51,7 +51,7 @@ public class PID {
     private final double INTEGRAL_COEFFICIENT = 0.0;
     private  final double DERIVATIVE_COEFFICIENT = 0.0;
 
-    private final double ticks_to_cm = (1/537.7)*2*Math.PI*9.6*wheel_coefficient;
+    private final double ticks_per_rotation = (1/537.7)*2*Math.PI*9.6*wheel_coefficient;
     private final double permitted_movement_error = 5;
     private final double permitted_angle_error = 3;
     private final double ticks_to_degree = (1/537.7)*2*Math.PI*9.6*rotation_coefficient;
@@ -59,6 +59,30 @@ public class PID {
     private final double max_rotation_power = 0.75;
 
     private Telemetry telemetry;
+
+    //FB Movement
+    private double fb_distance_travelled = 0;
+    private double fb_distance_away;
+    private double fb_last_distance_away;
+    private double fb_distance_deriv;
+    private double fb_distance_integral;
+
+    private double[] fb_last_wheel_positions = new double[4];
+    private double[] fb_wheel_speeds = new double[4];
+    private double[] fb_last_wheel_speeds = new double[4];
+    private double[] fb_wheel_speed_errors = new double[4];
+    private double[] fb_wheel_deriv = new double[4];
+    private double[] fb_wheel_integral = new double[4];
+
+    //RL Movement
+
+    //Wheel powers
+    //Order goes:
+    //0: Front left
+    //1: Front right
+    //2: Back left
+    //3: Back right
+    public double[] wheel_powers = new double[4];
 
     public PID(DcMotor front_left_motor, DcMotor back_left_motor, DcMotor front_right_motor, DcMotor back_right_motor, Telemetry telemetry) {
         motors.put("front_left", front_left_motor);
@@ -72,17 +96,41 @@ public class PID {
         motors.get("front_right").setDirection(DcMotor.Direction.FORWARD);
         motors.get("back_right").setDirection(DcMotor.Direction.FORWARD);
 
+        //Use encoder
+        motors.get("front_left").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        motors.get("back_left").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        motors.get("front_right").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        motors.get("back_right").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
         this.telemetry = telemetry;
     }
 
-    public void moveFB(double distance) {
+    //0 = Still running
+    //1 = Done
+    public int moveFB(double distance) {
+        //Find target speed for distance
+        if (fb_distance_travelled == 0) {
+            //We haven't moved
+            fb_distance_away = 0;
+            fb_last_distance_away = 0;
+            fb_distance_integral = 0;
 
+            for (int i = 0; i < 4; i++) {
+                fb_last_wheel_positions[i] = 0;
+                fb_wheel_speeds[i] = 0;
+                fb_last_wheel_positions[i] = 0;
+                fb_wheel_integral[i] = 0;
+            }
+        }
+        if ((fb_distance_travelled > (distance-permitted_movement_error)) && (fb_distance_travelled < (distance+permitted_movement_error))) {
+            //We're done
+            fb_distance_travelled = 0;
+        }
+
+        //Find target wheel power for wheel speed
+        return 0;
     }
     public void moveRL(double distance) {
 
-    }
-
-    //0 degrees is directly forward. To the left is negative
-    public void rotate(double degrees) {
     }
 }

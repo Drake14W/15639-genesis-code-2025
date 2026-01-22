@@ -158,6 +158,7 @@ public class MainTeleOp extends LinearOpMode {
     AprilTagProcessor tagProcessor;
     VisionPortal visionPortal;
     AprilTagDetection current_tag;
+    AprilTagDetection last_tag;
     double tag_range;
     double tag_elevation;
     double tag_bearing;
@@ -174,7 +175,7 @@ public class MainTeleOp extends LinearOpMode {
     double time_needed;
     double robot_bearing;
     final double SERVO_RANGE = 300; //Degrees
-    final double ASSUMED_SERVO_RPM = 20;
+    final double ASSUMED_SERVO_RPM = 100;
 
     //Movement values for aimbot (april tag) macro
     double aimbot_macro_yaw;
@@ -527,23 +528,30 @@ public class MainTeleOp extends LinearOpMode {
             //Track the target
             if (tagProcessor.getDetections().size() > 0) {
                 try {
+                    last_tag = current_tag;
                     current_tag = tagProcessor.getDetections().get(0);
+                    if (current_tag == null) {
+                        current_tag = last_tag;
+                    }
                 } catch (Exception ignored) {
                     ;
                 }
                 if (current_tag != null) {
-                    if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
+                    //if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
+                    if (current_tag.id == (alliance ? 24 : 20)) {
                         //Scan the tag
                         telemetry.addData("ID", current_tag.metadata.id);
                         tag_bearing = current_tag.ftcPose.bearing;
                         tag_elevation = current_tag.ftcPose.elevation;
                         tag_range = current_tag.ftcPose.range;
 
-                        if (Math.abs(tag_bearing) <= ((360 - SERVO_RANGE) / 2)) {
+                        if (Math.abs(tag_bearing) <= ((360 - SERVO_RANGE) / 3)) {
                             servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing) / SERVO_RANGE + 1/2);
+                            telemetry.addLine("In range");
                         }
                         else {
                             servo_positions.put("cam_servo", -Math.signum(cam_servo_pos_deg) * SERVO_RANGE / 2);
+                            telemetry.addLine("Flipping");
                         }
 
                         if (servo_positions.get("cam_servo") > 1.0) {
@@ -555,7 +563,15 @@ public class MainTeleOp extends LinearOpMode {
 
                         time_diff = runtime.seconds() - start_time;
 
-                        if ((time_diff > time_needed) || (Math.abs(tag_bearing) < (360-SERVO_RANGE)/2)) {
+                        if (time_diff > time_needed) {
+                            telemetry.addLine("Snapping");
+                            prev_servo_pos = servo_positions.get("cam_servo");
+                            cam_servo_pos_deg = SERVO_RANGE * (servo_positions.get("cam_servo") - 1/2);
+                            time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
+                            start_time = runtime.seconds();
+                        }
+                        else if (Math.abs(tag_bearing) < (360-SERVO_RANGE)/3) {
+                            telemetry.addLine("Snapping");
                             prev_servo_pos = servo_positions.get("cam_servo");
                             cam_servo_pos_deg = SERVO_RANGE * (servo_positions.get("cam_servo") - 1/2);
                             time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
