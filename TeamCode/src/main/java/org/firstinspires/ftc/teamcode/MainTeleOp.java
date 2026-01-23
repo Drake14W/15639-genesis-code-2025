@@ -162,6 +162,7 @@ public class MainTeleOp extends LinearOpMode {
     double tag_range;
     double tag_elevation;
     double tag_bearing;
+    double tag_bearing_deg;
     final double BEARING_RANGE = 3*(Math.PI/180); //We accept +/- 3 degrees when aiming
     final double APRIL_TAG_ROTATION_SPEED = 0.1;
     final double APRIL_TAG_PERMITTED_DELAY = 0.2; //We allow 0.2 seconds of delay between detecting the april tag and acting upon it, otherwise we ignore it
@@ -175,7 +176,7 @@ public class MainTeleOp extends LinearOpMode {
     double time_needed;
     double robot_bearing;
     final double SERVO_RANGE = 300; //Degrees
-    final double ASSUMED_SERVO_RPM = 100;
+    final double ASSUMED_SERVO_RPM = 50;
 
     //Movement values for aimbot (april tag) macro
     double aimbot_macro_yaw;
@@ -189,11 +190,12 @@ public class MainTeleOp extends LinearOpMode {
     final double MAX_FLYWHEEL_RPM = 18000;
     final double GRAVITY = 9.81;
     final double BUCKET_HEIGHT = 98.45;
-    final double CAMERA_HEIGHT = 32;
-    final double CAMERA_X_OFFSET = 7; //To the left of the launcher is positive
-    final double CAMERA_Z_OFFSET = 25; //Forward from the launcher is positive
+    final int CAM_EXPOSURE = 10;
+    final double CAMERA_HEIGHT = 44;
+    final double CAMERA_X_OFFSET = 0; //To the left of the launcher is positive
+    final double CAMERA_Z_OFFSET = 0; //Forward from the launcher is positive
     final double CAMERA_YAW = 0; //Left to right angle (positive is left)
-    final double CAMERA_PITCH = 25; //Up-down angle (positive is up)
+    final double CAMERA_PITCH = 10; //Up-down angle (positive is up)
     final double CAMERA_ROLL = 0; //Up-down rotation angle (like this for positive: ↓---↑)
     final double EXIT_HEIGHT = 21;
     final double EXIT_ANGLE = Math.toRadians(50);
@@ -280,6 +282,7 @@ public class MainTeleOp extends LinearOpMode {
         //Set direction of servos
         crservos.get("intake_servo1").setDirection(DcMotorSimple.Direction.FORWARD);
         crservos.get("intake_servo2").setDirection(DcMotorSimple.Direction.REVERSE);
+        servos.get("cam_servo").setDirection(Servo.Direction.FORWARD);
 
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
@@ -351,7 +354,7 @@ public class MainTeleOp extends LinearOpMode {
         if (exposure_control.getMode() != ExposureControl.Mode.Manual) {
             exposure_control.setMode(ExposureControl.Mode.Manual);
         }
-        exposure_control.setExposure(exposure_control.getMinExposure(TimeUnit.MILLISECONDS) + 1, TimeUnit.MILLISECONDS);
+        exposure_control.setExposure(exposure_control.getMinExposure(TimeUnit.MILLISECONDS) + CAM_EXPOSURE, TimeUnit.MILLISECONDS);
         GainControl gain_control = visionPortal.getCameraControl(GainControl.class);
         gain_control.setGain(gain_control.getMaxGain());
 
@@ -403,6 +406,7 @@ public class MainTeleOp extends LinearOpMode {
             else if (custom_gamepad_2.get_b()) {
                 alliance = true;
             }
+            telemetry.addData("Alliance:", alliance ? "Red" : "Blue");
 
             //Update motor rpm
             //x60000 converts from milliseconds to minutes
@@ -525,8 +529,10 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("lift", (byte) (action_map.get("lift") & (~ON_BITMASK)));
             }
 
+            telemetry.addData("Detections:", tagProcessor.getDetections().size());
             //Track the target
             if (tagProcessor.getDetections().size() > 0) {
+                telemetry.addLine("Some detection");
                 try {
                     last_tag = current_tag;
                     current_tag = tagProcessor.getDetections().get(0);
@@ -536,17 +542,27 @@ public class MainTeleOp extends LinearOpMode {
                 } catch (Exception ignored) {
                     ;
                 }
+
                 if (current_tag != null) {
+                    telemetry.addLine("Non-null detection");
                     //if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
                     if (current_tag.id == (alliance ? 24 : 20)) {
                         //Scan the tag
                         telemetry.addData("ID", current_tag.metadata.id);
                         tag_bearing = current_tag.ftcPose.bearing;
+                        tag_bearing_deg = tag_bearing * 180 / Math.PI;
                         tag_elevation = current_tag.ftcPose.elevation;
                         tag_range = current_tag.ftcPose.range;
 
-                        if (Math.abs(tag_bearing) <= ((360 - SERVO_RANGE) / 3)) {
-                            servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing) / SERVO_RANGE + 1/2);
+                        cam_servo_pos_deg = SERVO_RANGE * (servo_positions.get("cam_servo") - 0.5);
+
+                        telemetry.addData("Servo Normal Pos:", servo_positions.get("cam_servo"));
+                        telemetry.addData("Servo Pos:", cam_servo_pos_deg);
+
+                        telemetry.addData("Tag Bearing:", tag_bearing_deg);
+
+                        if (Math.abs(tag_bearing_deg) <= ((360 - SERVO_RANGE) / 2)) {
+                            servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing_deg) / SERVO_RANGE + (0.5));
                             telemetry.addLine("In range");
                         }
                         else {
@@ -564,24 +580,22 @@ public class MainTeleOp extends LinearOpMode {
                         time_diff = runtime.seconds() - start_time;
 
                         if (time_diff > time_needed) {
-                            telemetry.addLine("Snapping");
-                            prev_servo_pos = servo_positions.get("cam_servo");
-                            cam_servo_pos_deg = SERVO_RANGE * (servo_positions.get("cam_servo") - 1/2);
+                            telemetry.addLine("Time");
                             time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
+                            prev_servo_pos = servo_positions.get("cam_servo");
                             start_time = runtime.seconds();
                         }
-                        else if (Math.abs(tag_bearing) < (360-SERVO_RANGE)/3) {
-                            telemetry.addLine("Snapping");
-                            prev_servo_pos = servo_positions.get("cam_servo");
-                            cam_servo_pos_deg = SERVO_RANGE * (servo_positions.get("cam_servo") - 1/2);
+                        else if (Math.abs(tag_bearing_deg) <= (360-SERVO_RANGE)/2) {
+                            telemetry.addLine("View");
                             time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
+                            prev_servo_pos = servo_positions.get("cam_servo");
                             start_time = runtime.seconds();
                         }
                         else {
                             servo_positions.put("cam_servo", prev_servo_pos);
                         }
 
-                        robot_bearing = cam_servo_pos_deg - tag_bearing;
+                        robot_bearing = cam_servo_pos_deg - tag_bearing_deg;
                     }
                 }
             }
