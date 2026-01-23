@@ -10,6 +10,10 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.CameraControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
@@ -19,10 +23,20 @@ import java.util.concurrent.TimeUnit;
 @TeleOp
 public class AprilTagTest extends LinearOpMode {
 
+    final double CAMERA_HEIGHT = 32;
+    final double CAMERA_X_OFFSET = 7; //To the left of the launcher is positive
+    final double CAMERA_Z_OFFSET = 25; //Forward from the launcher is positive
+    final double CAMERA_YAW = 0; //Left to right angle (positive is left)
+    final double CAMERA_PITCH = 25; //Up-down angle (positive is up)
+    final double CAMERA_ROLL = 0; //Up-down rotation angle (like this for positive: ↓---↑)
+    final double EXIT_HEIGHT = 21;
+
     @Override
     public void runOpMode() throws InterruptedException {
         //All of the code below should probably be imported into the MainTeleOp and code built around it if used in mainphase
 
+        Position cam_position = new Position(DistanceUnit.CM, CAMERA_X_OFFSET, CAMERA_HEIGHT-EXIT_HEIGHT, CAMERA_Z_OFFSET, 0);
+        YawPitchRollAngles yaw_pitch_roll_angles = new YawPitchRollAngles(AngleUnit.DEGREES, CAMERA_YAW, CAMERA_PITCH-90, CAMERA_ROLL, 0);
         //Initializes the AprilTag software
         AprilTagProcessor tagProcessor = new AprilTagProcessor.Builder()
                 //shows scanned tag's ID
@@ -31,6 +45,7 @@ public class AprilTagTest extends LinearOpMode {
                 .setDrawAxes(true)
 
                 .setDrawCubeProjection(true)
+                .setCameraPose(cam_position, yaw_pitch_roll_angles)
 
                 .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
 
@@ -52,7 +67,7 @@ public class AprilTagTest extends LinearOpMode {
                 .enableLiveView(true)
 
                 //sets camera resolution; turn down if performance issues
-                .setCameraResolution(new Size(1920, 1080))
+                .setCameraResolution(new Size(640, 480))
 
                 //as above
                 .build();

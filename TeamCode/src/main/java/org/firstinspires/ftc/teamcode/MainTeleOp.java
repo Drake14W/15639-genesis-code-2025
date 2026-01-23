@@ -529,6 +529,7 @@ public class MainTeleOp extends LinearOpMode {
                             tag_bearing = tag.ftcPose.bearing;
                             tag_elevation = tag.ftcPose.elevation;
                             tag_range = tag.ftcPose.range;
+                            telemetry.addData("Bearing:", tag_bearing*(180/Math.PI));
 
                             //Get the flywheel running and PID this motherfucker (XD alright)
                             //Calculate exit velocity we need
