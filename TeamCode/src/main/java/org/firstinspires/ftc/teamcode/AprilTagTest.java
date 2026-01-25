@@ -52,7 +52,7 @@ public class AprilTagTest extends LinearOpMode {
                 .enableLiveView(true)
 
                 //sets camera resolution; turn down if performance issues
-                .setCameraResolution(new Size(1920, 1080))
+                .setCameraResolution(new Size(640, 480))
 
                 //as above
                 .build();
