@@ -102,6 +102,7 @@ public class MainTeleOp extends LinearOpMode {
 
     //Used to describe movement
     private double axial, lateral, trigger_yaw, stick_yaw, yaw;
+    double normalization_factor, max_power;
 
     //Globals for movement
     final double LONG_LAT_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
@@ -163,8 +164,9 @@ public class MainTeleOp extends LinearOpMode {
     double tag_elevation;
     double tag_bearing;
     double tag_bearing_deg;
+    double rotation_adjustment;
     final double BEARING_RANGE = 3*(Math.PI/180); //We accept +/- 3 degrees when aiming
-    final double APRIL_TAG_ROTATION_SPEED = 0.1;
+    final double APRIL_TAG_ROTATION_SPEED = 0.2;
     final double APRIL_TAG_PERMITTED_DELAY = 0.1; //We allow 0.2 seconds of delay between detecting the april tag and acting upon it, otherwise we ignore it
     boolean alliance = true; //true = red and false = blue
 
@@ -177,6 +179,7 @@ public class MainTeleOp extends LinearOpMode {
     double robot_bearing;
     final double SERVO_RANGE = 300; //Degrees
     final double ASSUMED_SERVO_RPM = 100;
+    final double ASSUMED_ROBOT_RPM = 70;
 
     //Movement values for aimbot (april tag) macro
     double aimbot_macro_yaw;
@@ -190,7 +193,7 @@ public class MainTeleOp extends LinearOpMode {
     final double MAX_FLYWHEEL_RPM = 18000;
     final double GRAVITY = 9.81;
     final double BUCKET_HEIGHT = 98.45;
-    final int CAM_EXPOSURE = 100;
+    final int CAM_EXPOSURE = 1;
     final double CAMERA_HEIGHT = 44;
     final double CAMERA_X_OFFSET = 0; //To the left of the launcher is positive
     final double CAMERA_Z_OFFSET = 0; //Forward from the launcher is positive
@@ -538,6 +541,11 @@ public class MainTeleOp extends LinearOpMode {
                 tag_bearing = current_tag.ftcPose.bearing;
                 tag_elevation = current_tag.ftcPose.elevation;
                 tag_range = current_tag.ftcPose.range;
+
+                //Get rid of noise
+                if (Math.abs(tag_bearing) <= (3.0 * 180 / Math.PI)) {
+                    tag_bearing = 0.0;
+                }
             }
             else {
                 tag_bearing = Math.PI + 1;
@@ -545,7 +553,6 @@ public class MainTeleOp extends LinearOpMode {
                 tag_range = -1;
             }
 
-            //if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
             //Scan the tag
             tag_bearing_deg = tag_bearing * 180 / Math.PI;
 
@@ -556,11 +563,13 @@ public class MainTeleOp extends LinearOpMode {
 
             telemetry.addData("Tag Bearing:", tag_bearing_deg);
 
-            if ((Math.abs(tag_bearing_deg) < 180)) {
+            if (custom_gamepad_1.get_dpad_down()) {
+                servo_positions.put("cam_servo", 0.5);
+            }
+            else if ((Math.abs(tag_bearing_deg) < 180)) {
                 servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing_deg) / SERVO_RANGE + (0.5));
                 telemetry.addLine("In range");
                 telemetry.addData("Pos:", servo_positions.get("cam_servo"));
-                sleep(500);
             }
             else if (sweep_mode == 0){
                 sweep_mode = -(int)(Math.signum(cam_servo_pos_deg + 0.1));
@@ -626,67 +635,66 @@ public class MainTeleOp extends LinearOpMode {
                     aimbot_flywheel_power = 0;
                 }
                 else {
-                    if (current_tag != null) {
-                        //1000000000 converts from nanoseconds to seconds
-                        if ((((double)(System.nanoTime() - current_tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (current_tag.id == (alliance ? 24 : 20))) {
-                            //Get the flywheel running and PID this motherfucker (XD alright)
-                            //Calculate exit velocity we need
-                            exit_velocity = (tag_range + BUCKET_WIDTH) * Math.sqrt((GRAVITY * 100) / (2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT - EXIT_HEIGHT))));
+                    //We can see the tag
+                    if (tag_range > 0) {
+                        //Get the flywheel running and PID this motherfucker (XD alright)
+                        //Calculate exit velocity we need
+                        exit_velocity = (tag_range + BUCKET_WIDTH) * Math.sqrt((GRAVITY * 100) / (2 * Math.pow(Math.cos(EXIT_ANGLE), 2) * ((tag_range + BUCKET_WIDTH) * Math.tan(EXIT_ANGLE) - (BUCKET_HEIGHT - EXIT_HEIGHT))));
 
-                            //Calculate flywheel motor power
-                            //I'm not good enough at physics for this shit (Damn is this Jamie?)
-                            aimbot_needed_flywheel_rpm = MAGIC_FLYWHEEL_NUMBER * exit_velocity;
+                        //Calculate flywheel motor power
+                        //I'm not good enough at physics for this shit (Damn is this Jamie?)
+                        aimbot_needed_flywheel_rpm = MAGIC_FLYWHEEL_NUMBER * exit_velocity;
 
-                            flywheel_rpm_error = aimbot_needed_flywheel_rpm - flywheel_rpm;
+                        flywheel_rpm_error = aimbot_needed_flywheel_rpm - flywheel_rpm;
 
-                            pid_time_delta = runtime.milliseconds() - pid_last_time;
-                            rpm_error_integral_val = flywheel_rpm_error*pid_time_delta;
-                            rpm_error_deriv_val = (flywheel_rpm_error - rpm_previous_error) / pid_time_delta;
-                            pid_last_time = runtime.milliseconds();
-                            rpm_previous_error = flywheel_rpm_error;
+                        pid_time_delta = runtime.milliseconds() - pid_last_time;
+                        rpm_error_integral_val = flywheel_rpm_error*pid_time_delta;
+                        rpm_error_deriv_val = (flywheel_rpm_error - rpm_previous_error) / pid_time_delta;
+                        pid_last_time = runtime.milliseconds();
+                        rpm_previous_error = flywheel_rpm_error;
 
-                            aimbot_flywheel_power += PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
+                        aimbot_flywheel_power += PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
 
-                            if (aimbot_flywheel_power < 0) {
-                                aimbot_flywheel_power = 0;
-                            }
-                            if (aimbot_flywheel_power > 1) {
-                                aimbot_flywheel_power = 1;
-                            }
-
-                            aimbot_intake_crservo_power = 0;
-                            telemetry.addData("Wanted RPM", aimbot_needed_flywheel_rpm);
-                            telemetry.addData("Exit Velocity", exit_velocity/100);
-                            telemetry.addData("RPM Error", flywheel_rpm_error);
-                            telemetry.addData("Flywheel Power", aimbot_flywheel_power);
-                            //We're rotated too far left
-                            if (robot_bearing < -BEARING_RANGE) {
-                                telemetry.addLine("Too far left");
-                                aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
-                            }
-                            //We're rotated too far right
-                            else if (robot_bearing > BEARING_RANGE) {
-                                telemetry.addLine("Too far right");
-                                aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
-                            }
-                            //Shoot
-                            else if (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE) {
-                                telemetry.addLine("Shooting");
-                                aimbot_macro_yaw = 0;
-                                aimbot_shooting = true;
-                                telemetry.addData("Exit Velocity", exit_velocity);
-                                telemetry.addData("Flywheel Power", aimbot_flywheel_power);
-                            }
-
-                            if (aimbot_shooting) {
-                                aimbot_intake_crservo_power = INTAKE_SERVO_SPEED;
-                                aimbot_intake_power = INTAKE_SPEED;
-                            }
-                            else {
-                                aimbot_intake_crservo_power = 0;
-                                aimbot_intake_power = 0;
-                            }
+                        if (aimbot_flywheel_power < 0) {
+                            aimbot_flywheel_power = 0;
                         }
+                        if (aimbot_flywheel_power > 1) {
+                            aimbot_flywheel_power = 1;
+                        }
+
+                        aimbot_intake_crservo_power = 0;
+                        telemetry.addData("Wanted RPM", aimbot_needed_flywheel_rpm);
+                        telemetry.addData("Exit Velocity", exit_velocity/100);
+                        telemetry.addData("RPM Error", flywheel_rpm_error);
+                        telemetry.addData("Flywheel Power", aimbot_flywheel_power);
+                        //We're rotated too far left
+                        if (robot_bearing < -BEARING_RANGE) {
+                            telemetry.addLine("Too far left");
+                            aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
+                        }
+                        //We're rotated too far right
+                        else if (robot_bearing > BEARING_RANGE) {
+                            telemetry.addLine("Too far right");
+                            aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
+                        }
+                        //Shoot
+                        else if (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE) {
+                            telemetry.addLine("Shooting");
+                            aimbot_macro_yaw = 0;
+                            aimbot_shooting = true;
+                            telemetry.addData("Exit Velocity", exit_velocity);
+                            telemetry.addData("Flywheel Power", aimbot_flywheel_power);
+                        }
+
+                        if (aimbot_shooting) {
+                            aimbot_intake_crservo_power = INTAKE_SERVO_SPEED;
+                            aimbot_intake_power = INTAKE_SPEED;
+                        }
+                        else {
+                            aimbot_intake_crservo_power = 0;
+                            aimbot_intake_power = 0;
+                        }
+
                         //Log data for PID tuning purposes
                         m_csvLogString.append(runtime.milliseconds()).append(", ").append(flywheel_rpm).append(", ").append(aimbot_needed_flywheel_rpm).append(", ").append(aimbot_flywheel_power).append("\n");
                     }
@@ -711,11 +719,29 @@ public class MainTeleOp extends LinearOpMode {
                     yaw = 0;
                 }
 
-                //Set engine powers
-                motor_powers.put("front_left", (axial + lateral + yaw)*movement_speed);
-                motor_powers.put("front_right", (axial - lateral - yaw)*movement_speed);
-                motor_powers.put("back_left", (axial - lateral + yaw)*movement_speed);
-                motor_powers.put("back_right", (axial + lateral - yaw)*movement_speed);
+                max_power = 0.0;
+                if ((axial + lateral + yaw) > max_power) {
+                    max_power = (axial + lateral + yaw);
+                }
+                if ((axial - lateral - yaw) > max_power) {
+                    max_power = (axial - lateral - yaw);
+                }
+                if ((axial - lateral + yaw) > max_power) {
+                    max_power = (axial - lateral + yaw);
+                }
+                if ((axial + lateral - yaw) > max_power) {
+                    max_power = (axial + lateral - yaw);
+                }
+
+                if (max_power > 0) {
+                    normalization_factor = 1.0 / (max_power * movement_speed);
+
+                    //Set engine powers
+                    motor_powers.put("front_left", (axial + lateral + yaw) * movement_speed * normalization_factor);
+                    motor_powers.put("front_right", (axial - lateral - yaw) * movement_speed * normalization_factor);
+                    motor_powers.put("back_left", (axial - lateral + yaw) * movement_speed * normalization_factor);
+                    motor_powers.put("back_right", (axial + lateral - yaw) * movement_speed * normalization_factor);
+                }
             }
 
             //Execute aimbot macro
