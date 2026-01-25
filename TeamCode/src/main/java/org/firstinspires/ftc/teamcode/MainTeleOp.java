@@ -155,6 +155,7 @@ public class MainTeleOp extends LinearOpMode {
         return true;
     }
 
+
     //Camera and AprilTag stuff
     AprilTagProcessor tagProcessor;
     VisionPortal visionPortal;
@@ -206,15 +207,41 @@ public class MainTeleOp extends LinearOpMode {
     final double MAGIC_FLYWHEEL_NUMBER = 5.25;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
-    final double PROPORTIONAL_COEFFIEICENT = 0.00005;
-    final double INTEGRAL_COEFFICIENT = 0.00001;
-    final double DERIVATIVE_COEFFICIENT = 0.0005;
+    final double LAMBDA_VAL = 6.2;
+    final double PROPORTIONAL_COEFFIEICENT = 1.0 / LAMBDA_VAL;
+    final double INTEGRAL_COEFFICIENT = 1.0 / Math.pow(LAMBDA_VAL, 2);
+    //final double DERIVATIVE_COEFFICIENT = 0.0005;
     double rpm_error_integral_val;
-    double rpm_error_deriv_val;
     double pid_time_delta;
     double pid_last_time;
     double rpm_previous_error;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
+
+    final double mom_inertia = 0.000440456;
+    final double friction_torque = 0.0011;
+    final double drag_coefficient = 1e-7;
+
+    final double MAX_FLYWHEEL_MOTOR_RPM = 6000;
+    final double MOTOR_STALL_TORQUE = 0.1444087346;
+    double u;
+    private double inverse_model(double rpm, double u) {
+        telemetry.addData("u:", u);
+        double omega = Math.min(rpm*(((2*Math.PI)/60)), 0.95 * (MAX_FLYWHEEL_MOTOR_RPM*(((2*Math.PI)/60))));
+        telemetry.addData("Omega:", omega);
+        double denom = MOTOR_STALL_TORQUE * (1.0 - omega / (MAX_FLYWHEEL_MOTOR_RPM*(((2*Math.PI)/60))));
+        telemetry.addData("Denom:", denom);
+
+        if (denom <= 1e-6) {
+            return 0.0;
+        }
+
+        double p = (mom_inertia * u + friction_torque + drag_coefficient * Math.pow(omega, 2)) / denom;
+        telemetry.addData("Moment of Inertia:", mom_inertia*1000000);
+        telemetry.addData("Friction Torque:", friction_torque);
+        telemetry.addData("Drag Coeff:", drag_coefficient*10000);
+        telemetry.addData("Suggested Power:", p);
+        return Math.max(0.0, Math.min(1.0, p));
+    }
 
     //To log data for PID tuning
     StringBuffer m_csvLogString = new StringBuffer();
@@ -648,12 +675,12 @@ public class MainTeleOp extends LinearOpMode {
                         flywheel_rpm_error = aimbot_needed_flywheel_rpm - flywheel_rpm;
 
                         pid_time_delta = runtime.milliseconds() - pid_last_time;
-                        rpm_error_integral_val = flywheel_rpm_error*pid_time_delta;
-                        rpm_error_deriv_val = (flywheel_rpm_error - rpm_previous_error) / pid_time_delta;
+                        rpm_error_integral_val += flywheel_rpm_error*pid_time_delta;
                         pid_last_time = runtime.milliseconds();
                         rpm_previous_error = flywheel_rpm_error;
 
-                        aimbot_flywheel_power += PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val + DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
+                        u = PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val;
+                        aimbot_flywheel_power = inverse_model(flywheel_rpm, u);
 
                         if (aimbot_flywheel_power < 0) {
                             aimbot_flywheel_power = 0;
