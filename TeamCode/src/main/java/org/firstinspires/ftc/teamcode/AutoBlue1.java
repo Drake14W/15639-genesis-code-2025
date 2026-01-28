@@ -101,16 +101,17 @@ public class AutoBlue1 extends LinearOpMode {
     final double AIMBOT_CORRECTION = 3*(Math.PI/180);
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
-    final double AIMBOT_PROPORTIONAL_COEFFIEICENT = 0.00005;
-    final double AIMBOT_INTEGRAL_COEFFICIENT = 0.00001;
-    final double AIMBOT_DERIVATIVE_COEFFICIENT = 0.0005;
+    final double LAMBDA_VAL = 6.2;
+    final double AIMBOT_PROPORTIONAL_COEFFIEICENT = 1.0 / LAMBDA_VAL;
+    final double AIMBOT_INTEGRAL_COEFFICIENT = 1.0 / Math.pow(LAMBDA_VAL, 2);
+    final double AIMBOT_DERIVATIVE_COEFFICIENT = 0.0;
     double rpm_error_integral_val;
     double rpm_error_deriv_val;
     double pid_time_delta;
     double pid_last_time;
     double rpm_previous_error;
     final double shooting_length = 3000; //Milliseconds
-    final double aimbot_length = shooting_length*5; //Milliseconds
+    final double aimbot_length = shooting_length*4; //Milliseconds
     final double FLICKING_LENGTH = 400; //Milliseconds
     double aimbot_starting_time;
     final double FLICKER_DOWN_POS = 0.25;
@@ -118,6 +119,32 @@ public class AutoBlue1 extends LinearOpMode {
     final double FLICKER_UP_POS = 0.0;
     int balls_shot;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100;
+
+    final double mom_inertia = 0.000440456;
+    final double friction_torque = 0.0011;
+    final double drag_coefficient = 1e-7;
+
+    final double MAX_FLYWHEEL_MOTOR_RPM = 6000;
+    final double MOTOR_STALL_TORQUE = 0.1444087346;
+    double u;
+    private double inverse_model(double rpm, double u) {
+        telemetry.addData("u:", u);
+        double omega = Math.min(rpm*(((2*Math.PI)/60)), 0.95 * (MAX_FLYWHEEL_MOTOR_RPM*(((2*Math.PI)/60))));
+        telemetry.addData("Omega:", omega);
+        double denom = MOTOR_STALL_TORQUE * (1.0 - omega / (MAX_FLYWHEEL_MOTOR_RPM*(((2*Math.PI)/60))));
+        telemetry.addData("Denom:", denom);
+
+        if (denom <= 1e-6) {
+            return 0.0;
+        }
+
+        double p = (mom_inertia * u + friction_torque + drag_coefficient * Math.pow(omega, 2)) / denom;
+        telemetry.addData("Moment of Inertia:", mom_inertia*1000000);
+        telemetry.addData("Friction Torque:", friction_torque);
+        telemetry.addData("Drag Coeff:", drag_coefficient*10000);
+        telemetry.addData("Suggested Power:", p);
+        return Math.max(0.0, Math.min(1.0, p));
+    }
 
     private void aimbot() {
         pid_last_time = runtime.milliseconds();
@@ -164,7 +191,8 @@ public class AutoBlue1 extends LinearOpMode {
                     pid_last_time = runtime.milliseconds();
                     rpm_previous_error = flywheel_rpm_error;
 
-                    aimbot_flywheel_power += AIMBOT_PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + AIMBOT_INTEGRAL_COEFFICIENT * rpm_error_integral_val + AIMBOT_DERIVATIVE_COEFFICIENT * rpm_error_deriv_val;
+                    u = AIMBOT_PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + AIMBOT_INTEGRAL_COEFFICIENT * rpm_error_integral_val;
+                    aimbot_flywheel_power = inverse_model(flywheel_rpm, u);
 
                     if (aimbot_flywheel_power < 0) {
                         aimbot_flywheel_power = 0;
@@ -414,11 +442,36 @@ public class AutoBlue1 extends LinearOpMode {
 
         last_rpm_time = runtime.milliseconds();
 
-        while (opModeIsActive()) {
-            //Get the target
-            //Step action (movement, aimbot, etc) from where the cursor currently is in the list of actions
-            //If function returns "done" signal, move the cursor to the next function
-            //Apply motor powers
-        }
+        motors.get("front_left").setPower(0.5);
+        motors.get("back_left").setPower(0.5);
+        motors.get("front_right").setPower(-0.5);
+        motors.get("back_right").setPower(-0.5);
+        /*
+        while (pid.move(100, false) == 0) {
+            telemetry.addData("front_left:", motors.get("front_left").getPower());
+            telemetry.addData("back_left:", motors.get("back_left").getPower());
+            telemetry.addData("front_right:", motors.get("front_right").getPower());
+            telemetry.addData("back_right:", motors.get("back_right").getPower());
+
+            telemetry.update();
+        }*/
+        sleep(1000);
+
+        //Shoot off the start
+        /*aimbot();
+        //Rotate clockwise to be adjacent to wall
+        motors.get("front_left").setPower(0.5);
+        motors.get("back_left").setPower(0.5);
+        motors.get("front_right").setPower(-0.5);
+        motors.get("back_right").setPower(-0.5);
+        sleep(500);
+        motors.get("front_left").setPower(0);
+        motors.get("back_left").setPower(0);
+        motors.get("front_right").setPower(0);
+        motors.get("back_right").setPower(0);
+        //"Slam" to wall
+        while (pid.move(30, true) == 0) {
+
+        }*/
     }
 }

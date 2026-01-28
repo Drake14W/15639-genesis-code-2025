@@ -569,16 +569,18 @@ public class MainTeleOp extends LinearOpMode {
                 tag_elevation = current_tag.ftcPose.elevation;
                 tag_range = current_tag.ftcPose.range;
 
-                //Get rid of noise
-                if (Math.abs(tag_bearing) <= (3.0 * 180 / Math.PI)) {
+                /*//Get rid of noise
+                if (Math.abs(tag_bearing) <= (3.0 * Math.PI / 180)) {
                     tag_bearing = 0.0;
-                }
+                }*/
             }
-            else {
+            else if (!((Math.abs(tag_bearing_deg) < 180) && (time_diff > time_needed))) {
                 tag_bearing = Math.PI + 1;
                 tag_elevation = 0;
                 tag_range = -1;
             }
+
+            time_diff = runtime.seconds() - start_time;
 
             //Scan the tag
             tag_bearing_deg = tag_bearing * 180 / Math.PI;
@@ -591,14 +593,14 @@ public class MainTeleOp extends LinearOpMode {
             telemetry.addData("Tag Bearing:", tag_bearing_deg);
 
             if (custom_gamepad_1.get_dpad_down()) {
-                servo_positions.put("cam_servo", 0.5);
+                //servo_positions.put("cam_servo", 0.5);
             }
             else if ((Math.abs(tag_bearing_deg) < 180)) {
-                servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing_deg) / SERVO_RANGE + (0.5));
+                //servo_positions.put("cam_servo", (cam_servo_pos_deg - tag_bearing_deg) / SERVO_RANGE + (0.5));
                 telemetry.addLine("In range");
                 telemetry.addData("Pos:", servo_positions.get("cam_servo"));
             }
-            else if (sweep_mode == 0){
+            else if ((sweep_mode == 0) && (time_diff > time_needed)){
                 sweep_mode = -(int)(Math.signum(cam_servo_pos_deg + 0.1));
                 time_needed = 999999999;
                 //servo_positions.put("cam_servo", -Math.signum(cam_servo_pos_deg) * SERVO_RANGE / 2);
@@ -606,13 +608,12 @@ public class MainTeleOp extends LinearOpMode {
             }
 
             if (servo_positions.get("cam_servo") > 1.0) {
-                servo_positions.put("cam_servo", 1.0);
+                //servo_positions.put("cam_servo", 1.0);
             }
             else if (servo_positions.get("cam_servo") < 0.0) {
-                servo_positions.put("cam_servo", 0.0);
+                //servo_positions.put("cam_servo", 0.0);
             }
 
-            time_diff = runtime.seconds() - start_time;
             telemetry.addData("Time Diff:", time_diff);
             telemetry.addData("Time Needed:", time_needed);
             telemetry.addData("Prev Servo Position:", prev_servo_pos);
@@ -624,28 +625,29 @@ public class MainTeleOp extends LinearOpMode {
                 sweep_mode = 0;
                 start_time = runtime.seconds();
             }
-            else if (Math.abs(tag_bearing_deg) < 180) {
-                telemetry.addLine("View");
-                time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
-                prev_servo_pos = servo_positions.get("cam_servo");
-                sweep_mode = 0;
-                start_time = runtime.seconds();
-            }
             else if (sweep_mode != 0) {
-                telemetry.addLine("Sweeping");
-                if (prev_servo_pos >= 0.95) {
-                    telemetry.addLine("Setting to lower");
-                    sweep_mode = -1;
+                if (Math.abs(tag_bearing_deg) < 180) {
+                    telemetry.addLine("View");
+                    time_needed = Math.abs(servo_positions.get("cam_servo") - prev_servo_pos)*(60/ASSUMED_SERVO_RPM);
+                    prev_servo_pos = servo_positions.get("cam_servo");
+                    sweep_mode = 0;
+                    start_time = runtime.seconds();
                 }
-                else if (prev_servo_pos <= 0.05) {
-                    telemetry.addLine("Setting to raise");
-                    sweep_mode = 1;
+                else {
+                    telemetry.addLine("Sweeping");
+                    if (prev_servo_pos >= 0.95) {
+                        telemetry.addLine("Setting to lower");
+                        sweep_mode = -1;
+                    } else if (prev_servo_pos <= 0.05) {
+                        telemetry.addLine("Setting to raise");
+                        sweep_mode = 1;
+                    }
+                    prev_servo_pos = servo_positions.get("cam_servo");
+                    //servo_positions.put("cam_servo", servo_positions.get("cam_servo") + (0.001 * sweep_mode));
                 }
-                prev_servo_pos = servo_positions.get("cam_servo");
-                servo_positions.put("cam_servo", servo_positions.get("cam_servo") + (0.001 * sweep_mode));
             }
             else {
-                servo_positions.put("cam_servo", prev_servo_pos);
+                //servo_positions.put("cam_servo", prev_servo_pos);
             }
 
             robot_bearing = cam_servo_pos_deg - tag_bearing_deg;
@@ -695,12 +697,14 @@ public class MainTeleOp extends LinearOpMode {
                         telemetry.addData("RPM Error", flywheel_rpm_error);
                         telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                         //We're rotated too far left
-                        if (robot_bearing < -BEARING_RANGE) {
+                        //if (robot_bearing < -BEARING_RANGE) {
+                        if (tag_bearing_deg < -BEARING_RANGE) {
                             telemetry.addLine("Too far left");
                             aimbot_macro_yaw = APRIL_TAG_ROTATION_SPEED;
                         }
                         //We're rotated too far right
-                        else if (robot_bearing > BEARING_RANGE) {
+                        //else if (robot_bearing > BEARING_RANGE) {
+                        else if (tag_bearing_deg > BEARING_RANGE) {
                             telemetry.addLine("Too far right");
                             aimbot_macro_yaw = -APRIL_TAG_ROTATION_SPEED;
                         }
@@ -760,15 +764,14 @@ public class MainTeleOp extends LinearOpMode {
                     max_power = (axial + lateral - yaw);
                 }
 
-                if (max_power > 0) {
+                if (max_power > 1.0) {
                     normalization_factor = 1.0 / (max_power * movement_speed);
-
-                    //Set engine powers
-                    motor_powers.put("front_left", (axial + lateral + yaw) * movement_speed * normalization_factor);
-                    motor_powers.put("front_right", (axial - lateral - yaw) * movement_speed * normalization_factor);
-                    motor_powers.put("back_left", (axial - lateral + yaw) * movement_speed * normalization_factor);
-                    motor_powers.put("back_right", (axial + lateral - yaw) * movement_speed * normalization_factor);
                 }
+                //Set engine powers
+                motor_powers.put("front_left", (axial + lateral + yaw) * movement_speed * normalization_factor);
+                motor_powers.put("front_right", (axial - lateral - yaw) * movement_speed * normalization_factor);
+                motor_powers.put("back_left", (axial - lateral + yaw) * movement_speed * normalization_factor);
+                motor_powers.put("back_right", (axial + lateral - yaw) * movement_speed * normalization_factor);
             }
 
             //Execute aimbot macro

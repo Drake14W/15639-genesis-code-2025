@@ -47,9 +47,13 @@ public class PID {
     //Global speed percentage for rotation
     private final double rotation_coefficient = 0.2;
 
-    private final double PROPORTIONAL_COEFFIEICENT = 4.0;
-    private final double INTEGRAL_COEFFICIENT = 0.0;
-    private  final double DERIVATIVE_COEFFICIENT = 0.0;
+    private final double SPEED_PROPORTIONAL_COEFFIEICENT = 0.000676;
+    private final double SPEED_INTEGRAL_COEFFICIENT = 0.0005;
+    private final double SPEED_DERIVATIVE_COEFFICIENT = 0.000125;
+    private final double WHEEL_PROPORTIONAL_COEFFIEICENT = 3.69822;
+    private final double WHEEL_INTEGRAL_COEFFICIENT = 0.3;
+    private final double WHEEL_DERIVATIVE_COEFFICIENT = 0.07;
+    private final double MOTOR_CPR = 537.7;
 
     private final double ticks_per_rotation = (1/537.7)*2*Math.PI*9.6*wheel_coefficient;
     private final double permitted_movement_error = 5;
@@ -61,18 +65,22 @@ public class PID {
     private Telemetry telemetry;
 
     //FB Movement
-    private double fb_distance_travelled = 0;
-    private double fb_distance_away;
-    private double fb_last_distance_away;
-    private double fb_distance_deriv;
-    private double fb_distance_integral;
+    private double move_distance_travelled = 0;
+    private double move_distance_away;
+    private double move_last_distance_away;
+    private double move_distance_deriv;
+    private double move_distance_integral;
+    private double move_last_time;
+    private double move_time_delta;
 
-    private double[] fb_last_wheel_positions = new double[4];
-    private double[] fb_wheel_speeds = new double[4];
-    private double[] fb_last_wheel_speeds = new double[4];
-    private double[] fb_wheel_speed_errors = new double[4];
-    private double[] fb_wheel_deriv = new double[4];
-    private double[] fb_wheel_integral = new double[4];
+    private double move_target_wheel_speed;
+    private double[] move_last_wheel_positions = new double[4];
+    private double[] move_wheel_speeds = new double[4];
+    private double[] move_last_wheel_speeds = new double[4];
+    private double[] move_wheel_speed_errors = new double[4];
+    private double[] move_wheel_deriv = new double[4];
+    private double[] move_wheel_integral = new double[4];
+    final double[] move_last_wheel_speed_errors = new double[4];
 
     //RL Movement
 
@@ -107,30 +115,73 @@ public class PID {
 
     //0 = Still running
     //1 = Done
-    public int moveFB(double distance) {
+    public int move(double distance, boolean lr) {
         //Find target speed for distance
-        if (fb_distance_travelled == 0) {
+        if (move_distance_travelled == 0) {
             //We haven't moved
-            fb_distance_away = 0;
-            fb_last_distance_away = 0;
-            fb_distance_integral = 0;
+            move_distance_away = distance;
+            move_last_distance_away = 0;
+            move_distance_integral = 0;
+            move_last_time = runtime.seconds();
 
             for (int i = 0; i < 4; i++) {
-                fb_last_wheel_positions[i] = 0;
-                fb_wheel_speeds[i] = 0;
-                fb_last_wheel_positions[i] = 0;
-                fb_wheel_integral[i] = 0;
+                move_last_wheel_positions[i] = 0;
+                move_wheel_speeds[i] = 0;
+                move_last_wheel_positions[i] = 0;
+                move_wheel_integral[i] = 0;
+                move_last_wheel_speed_errors[i] = 0;
             }
         }
-        if ((fb_distance_travelled > (distance-permitted_movement_error)) && (fb_distance_travelled < (distance+permitted_movement_error))) {
+        if ((move_distance_travelled > (distance-permitted_movement_error)) && (move_distance_travelled < (distance+permitted_movement_error))) {
             //We're done
-            fb_distance_travelled = 0;
+            move_distance_travelled = 0;
+            return 1;
         }
 
-        //Find target wheel power for wheel speed
-        return 0;
-    }
-    public void moveRL(double distance) {
+        move_time_delta = runtime.seconds() - move_last_time;
+        move_distance_integral += move_distance_away*move_time_delta;
+        move_distance_deriv = (move_distance_away - move_last_distance_away) / move_time_delta;
+        move_last_time = runtime.milliseconds();
+        move_last_distance_away = move_distance_away;
 
+        move_target_wheel_speed = (move_distance_away * SPEED_PROPORTIONAL_COEFFIEICENT + move_distance_deriv * SPEED_DERIVATIVE_COEFFICIENT + move_distance_integral * SPEED_INTEGRAL_COEFFICIENT) / 5.2;
+
+        for (int i = 0; i < 4; i++) {
+            move_wheel_speed_errors[i] = move_target_wheel_speed - move_wheel_speeds[i];
+
+            move_wheel_integral[i] += move_wheel_speed_errors[i]*move_time_delta;
+            move_wheel_deriv[i] = (move_wheel_speed_errors[i] - move_last_wheel_speed_errors[i]) / move_time_delta;
+            move_last_wheel_speed_errors[i] = move_wheel_speed_errors[i];
+
+
+            wheel_powers[i] = (lr ? -1 : 1) * (WHEEL_PROPORTIONAL_COEFFIEICENT * move_wheel_speed_errors[i] + WHEEL_DERIVATIVE_COEFFICIENT * move_wheel_deriv[i] + WHEEL_INTEGRAL_COEFFICIENT * move_wheel_integral[i]);
+            if (wheel_powers[i] > 1.0) {
+                wheel_powers[i] = 1.0;
+            }
+            else if (wheel_powers[i] < -1.0) {
+                wheel_powers[i] = -1.0;
+            }
+        }
+
+        move_wheel_speeds[0] = ((motors.get("front_left").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[0]) * (2*Math.PI) / move_time_delta;
+        move_last_wheel_positions[0] = motors.get("front_left").getCurrentPosition()/MOTOR_CPR;
+        move_wheel_speeds[1] = ((motors.get("front_right").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[2]) * (2*Math.PI) / move_time_delta;
+        move_last_wheel_positions[1] = motors.get("front_right").getCurrentPosition()/MOTOR_CPR;
+        move_wheel_speeds[2] = ((motors.get("back_left").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[2]) * (2*Math.PI) / move_time_delta;
+        move_last_wheel_positions[2] = motors.get("back_left").getCurrentPosition()/MOTOR_CPR;
+        move_wheel_speeds[3] = ((motors.get("back_right").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[3]) * (2*Math.PI) / move_time_delta;
+        move_last_wheel_positions[3] = motors.get("back_right").getCurrentPosition()/MOTOR_CPR;
+
+        motors.get("front_left").setPower(wheel_powers[0]);
+        motors.get("back_left").setPower(wheel_powers[1]);
+        motors.get("front_right").setPower(wheel_powers[2]);
+        motors.get("back_right").setPower(wheel_powers[3]);
+
+        telemetry.addData("front_left:", wheel_powers[0]);
+        telemetry.addData("back_left:", wheel_powers[1]);
+        telemetry.addData("front_right:", wheel_powers[2]);
+        telemetry.addData("back_right:", wheel_powers[3]);
+
+        return 0;
     }
 }
