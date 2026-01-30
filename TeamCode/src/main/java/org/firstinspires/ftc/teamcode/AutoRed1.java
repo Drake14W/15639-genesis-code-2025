@@ -225,7 +225,7 @@ public class AutoRed1 extends LinearOpMode {
                 else {
                     //Turn off image processor
                     visionPortal.setProcessorEnabled(tagProcessor, false);
-                    
+
                     return;
                 }
             }
@@ -400,7 +400,7 @@ public class AutoRed1 extends LinearOpMode {
         gain_control.setGain(gain_control.getMaxGain());
 
         //Create the PID controller
-        PID pid = new PID(motors.get("front_left"), motors.get("back_left"), motors.get("front_right"), motors.get("back_right"), telemetry);
+        //PID pid = new PID(motors.get("front_left"), motors.get("back_left"), motors.get("front_right"), motors.get("back_right"), telemetry);
 
         telemetry.addData("Status", "Initialized");
         telemetry.update();
@@ -408,10 +408,10 @@ public class AutoRed1 extends LinearOpMode {
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
+        last_rpm_time = runtime.milliseconds();
+
         //Reset runtime var
         runtime.reset();
-
-        last_rpm_time = runtime.milliseconds();
 
         //Move off wall
         //pid.move(10);

@@ -580,6 +580,7 @@ public class MainTeleOp extends LinearOpMode {
                 tag_range = -1;
             }
 
+            /*
             time_diff = runtime.seconds() - start_time;
 
             //Scan the tag
@@ -650,7 +651,7 @@ public class MainTeleOp extends LinearOpMode {
                 //servo_positions.put("cam_servo", prev_servo_pos);
             }
 
-            robot_bearing = cam_servo_pos_deg - tag_bearing_deg;
+            robot_bearing = cam_servo_pos_deg - tag_bearing_deg;*/
 
             //Check for aimbot macro (EVAN CHANGED the button FROM gamepad2 to 1)
             if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {

@@ -337,8 +337,7 @@ public class AutoBlue1 extends LinearOpMode {
             motors.get(key).setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             if (key != "flywheel") {
                 motors.get(key).setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            }
-            else {
+            } else {
                 motors.get(key).setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             }
         }
@@ -364,8 +363,7 @@ public class AutoBlue1 extends LinearOpMode {
         for (String key : motors.keySet()) {
             if (key == "flywheel") {
                 motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            }
-            else {
+            } else {
                 motors.get(key).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             }
         }
@@ -387,8 +385,8 @@ public class AutoBlue1 extends LinearOpMode {
         }
 
         //Initialize camera and april tag processing stuff
-        Position cam_position = new Position(DistanceUnit.CM, CAMERA_X_OFFSET, CAMERA_HEIGHT-EXIT_HEIGHT, CAMERA_Z_OFFSET, 0);
-        YawPitchRollAngles yaw_pitch_roll_angles = new YawPitchRollAngles(AngleUnit.DEGREES, CAMERA_YAW, CAMERA_PITCH-90, CAMERA_ROLL, 0);
+        Position cam_position = new Position(DistanceUnit.CM, CAMERA_X_OFFSET, CAMERA_HEIGHT - EXIT_HEIGHT, CAMERA_Z_OFFSET, 0);
+        YawPitchRollAngles yaw_pitch_roll_angles = new YawPitchRollAngles(AngleUnit.DEGREES, CAMERA_YAW, CAMERA_PITCH - 90, CAMERA_ROLL, 0);
         tagProcessor = new AprilTagProcessor.Builder()
                 .setDrawTagID(true)
                 .setDrawAxes(true)
@@ -428,50 +426,39 @@ public class AutoBlue1 extends LinearOpMode {
         gain_control.setGain(gain_control.getMaxGain());
 
         //Create the PID controller
-        PID pid = new PID(motors.get("front_left"), motors.get("back_left"), motors.get("front_right"), motors.get("back_right"), telemetry);
+        NewPID pid = new NewPID(motors.get("front_left"), motors.get("back_left"), motors.get("front_right"), motors.get("back_right"), telemetry);
 
-        //This data is displayed on the driver hub console
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
+        last_rpm_time = runtime.milliseconds();
+
         //Reset runtime var
         runtime.reset();
 
-        last_rpm_time = runtime.milliseconds();
-
-        motors.get("front_left").setPower(0.5);
-        motors.get("back_left").setPower(0.5);
-        motors.get("front_right").setPower(-0.5);
-        motors.get("back_right").setPower(-0.5);
-        /*
+        //Move off wall
         while (pid.move(100, false) == 0) {
-            telemetry.addData("front_left:", motors.get("front_left").getPower());
-            telemetry.addData("back_left:", motors.get("back_left").getPower());
-            telemetry.addData("front_right:", motors.get("front_right").getPower());
-            telemetry.addData("back_right:", motors.get("back_right").getPower());
+            sleep(10);
+        }
 
-            telemetry.update();
-        }*/
-        sleep(1000);
-
-        //Shoot off the start
-        /*aimbot();
-        //Rotate clockwise to be adjacent to wall
-        motors.get("front_left").setPower(0.5);
-        motors.get("back_left").setPower(0.5);
-        motors.get("front_right").setPower(-0.5);
-        motors.get("back_right").setPower(-0.5);
-        sleep(500);
+        //Rotate to face goal
+        //pid.rotate(-30);
+        /*motors.get("front_left").setPower(0.25);
+        motors.get("back_left").setPower(0.25);
+        motors.get("front_right").setPower(-0.25);
+        motors.get("back_right").setPower(-0.25);
+        sleep(600);
         motors.get("front_left").setPower(0);
         motors.get("back_left").setPower(0);
         motors.get("front_right").setPower(0);
         motors.get("back_right").setPower(0);
-        //"Slam" to wall
-        while (pid.move(30, true) == 0) {
+        aimbot_flywheel_power = 0;
+        aimbot();*/
 
-        }*/
+        //Move off line
+        //pid.move(15);
     }
 }

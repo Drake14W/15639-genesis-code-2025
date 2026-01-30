@@ -34,7 +34,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 //NOTE: ALL DISTANCES ARE IN CENTIMETERS, ALL TIMES ARE IN SECONDS
-public class PID {
+public class NewPID {
     //Create the variables for the motors and initializes a variable that keeps track of how long the opmode has been running
     private ElapsedTime runtime = new ElapsedTime();
 
@@ -47,19 +47,18 @@ public class PID {
     //Global speed percentage for rotation
     private final double rotation_coefficient = 0.2;
 
-    private final double SPEED_PROPORTIONAL_COEFFIEICENT = 0.000676;
-    private final double SPEED_INTEGRAL_COEFFICIENT = 0.0005;
-    private final double SPEED_DERIVATIVE_COEFFICIENT = 0.000125;
-    private final double WHEEL_PROPORTIONAL_COEFFIEICENT = 3.69822;
-    private final double WHEEL_INTEGRAL_COEFFICIENT = 0.3;
-    private final double WHEEL_DERIVATIVE_COEFFICIENT = 0.07;
+    private final double SPEED_PROPORTIONAL_COEFFIEICENT = 0.1;
+    private final double SPEED_INTEGRAL_COEFFICIENT = 0.0;
+    private final double SPEED_DERIVATIVE_COEFFICIENT = 0.0;
+    private final double WHEEL_PROPORTIONAL_COEFFIEICENT = 0.369822;
+    private final double WHEEL_INTEGRAL_COEFFICIENT = 0.0;
+    private final double WHEEL_DERIVATIVE_COEFFICIENT = 0.0;
     private final double MOTOR_CPR = 537.7;
 
-    private final double ticks_per_rotation = (1/537.7)*2*Math.PI*9.6*wheel_coefficient;
     private final double permitted_movement_error = 5;
     private final double permitted_angle_error = 3;
-    private final double ticks_to_degree = (1/537.7)*2*Math.PI*9.6*rotation_coefficient;
     private final double max_motor_power = 0.5;
+    private final double max_stop_power = 0.05;
     private final double max_rotation_power = 0.75;
 
     private Telemetry telemetry;
@@ -92,23 +91,11 @@ public class PID {
     //3: Back right
     public double[] wheel_powers = new double[4];
 
-    public PID(DcMotor front_left_motor, DcMotor back_left_motor, DcMotor front_right_motor, DcMotor back_right_motor, Telemetry telemetry) {
+    public NewPID(DcMotor front_left_motor, DcMotor back_left_motor, DcMotor front_right_motor, DcMotor back_right_motor, Telemetry telemetry) {
         motors.put("front_left", front_left_motor);
         motors.put("back_left", back_left_motor);
         motors.put("front_right", front_right_motor);
         motors.put("back_right", back_right_motor);
-
-        //Set motor directions
-        motors.get("front_left").setDirection(DcMotor.Direction.REVERSE);
-        motors.get("back_left").setDirection(DcMotor.Direction.REVERSE);
-        motors.get("front_right").setDirection(DcMotor.Direction.FORWARD);
-        motors.get("back_right").setDirection(DcMotor.Direction.FORWARD);
-
-        //Use encoder
-        motors.get("front_left").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        motors.get("back_left").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        motors.get("front_right").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        motors.get("back_right").setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
         this.telemetry = telemetry;
     }
@@ -132,16 +119,17 @@ public class PID {
                 move_last_wheel_speed_errors[i] = 0;
             }
         }
-        if ((move_distance_travelled > (distance-permitted_movement_error)) && (move_distance_travelled < (distance+permitted_movement_error))) {
+        if ((move_distance_travelled > (distance-permitted_movement_error)) && (move_distance_travelled < (distance+permitted_movement_error)) && (Math.abs(wheel_powers[0]) < max_stop_power) && (Math.abs(wheel_powers[1]) < max_stop_power) && (Math.abs(wheel_powers[2]) < max_stop_power) && (Math.abs(wheel_powers[3]) < max_stop_power)) {
             //We're done
             move_distance_travelled = 0;
             return 1;
         }
 
+        move_distance_away = distance - move_distance_travelled;
         move_time_delta = runtime.seconds() - move_last_time;
         move_distance_integral += move_distance_away*move_time_delta;
         move_distance_deriv = (move_distance_away - move_last_distance_away) / move_time_delta;
-        move_last_time = runtime.milliseconds();
+        move_last_time = runtime.seconds();
         move_last_distance_away = move_distance_away;
 
         move_target_wheel_speed = (move_distance_away * SPEED_PROPORTIONAL_COEFFIEICENT + move_distance_deriv * SPEED_DERIVATIVE_COEFFICIENT + move_distance_integral * SPEED_INTEGRAL_COEFFICIENT) / 5.2;
@@ -154,7 +142,10 @@ public class PID {
             move_last_wheel_speed_errors[i] = move_wheel_speed_errors[i];
 
 
-            wheel_powers[i] = (lr ? -1 : 1) * (WHEEL_PROPORTIONAL_COEFFIEICENT * move_wheel_speed_errors[i] + WHEEL_DERIVATIVE_COEFFICIENT * move_wheel_deriv[i] + WHEEL_INTEGRAL_COEFFICIENT * move_wheel_integral[i]);
+            wheel_powers[i] = WHEEL_PROPORTIONAL_COEFFIEICENT * move_wheel_speed_errors[i] + WHEEL_DERIVATIVE_COEFFICIENT * move_wheel_deriv[i] + WHEEL_INTEGRAL_COEFFICIENT * move_wheel_integral[i];
+            if (lr && ((i == 1) || (i == 2))) {
+                wheel_powers[i] *= -1;
+            }
             if (wheel_powers[i] > 1.0) {
                 wheel_powers[i] = 1.0;
             }
@@ -165,22 +156,38 @@ public class PID {
 
         move_wheel_speeds[0] = ((motors.get("front_left").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[0]) * (2*Math.PI) / move_time_delta;
         move_last_wheel_positions[0] = motors.get("front_left").getCurrentPosition()/MOTOR_CPR;
-        move_wheel_speeds[1] = ((motors.get("front_right").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[2]) * (2*Math.PI) / move_time_delta;
-        move_last_wheel_positions[1] = motors.get("front_right").getCurrentPosition()/MOTOR_CPR;
-        move_wheel_speeds[2] = ((motors.get("back_left").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[2]) * (2*Math.PI) / move_time_delta;
-        move_last_wheel_positions[2] = motors.get("back_left").getCurrentPosition()/MOTOR_CPR;
+        move_wheel_speeds[1] = ((motors.get("back_left").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[1]) * (2*Math.PI) / move_time_delta;
+        move_last_wheel_positions[1] = motors.get("back_left").getCurrentPosition()/MOTOR_CPR;
+        move_wheel_speeds[2] = ((motors.get("front_right").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[2]) * (2*Math.PI) / move_time_delta;
+        move_last_wheel_positions[2] = motors.get("front_right").getCurrentPosition()/MOTOR_CPR;
         move_wheel_speeds[3] = ((motors.get("back_right").getCurrentPosition()/MOTOR_CPR) - move_last_wheel_positions[3]) * (2*Math.PI) / move_time_delta;
         move_last_wheel_positions[3] = motors.get("back_right").getCurrentPosition()/MOTOR_CPR;
+
+        move_distance_travelled = (move_last_wheel_positions[0] + move_last_wheel_positions[1] + move_last_wheel_positions[2] + move_last_wheel_positions[3]) * 2 * Math.PI * 5.2 / 4;
 
         motors.get("front_left").setPower(wheel_powers[0]);
         motors.get("back_left").setPower(wheel_powers[1]);
         motors.get("front_right").setPower(wheel_powers[2]);
         motors.get("back_right").setPower(wheel_powers[3]);
 
-        telemetry.addData("front_left:", wheel_powers[0]);
-        telemetry.addData("back_left:", wheel_powers[1]);
-        telemetry.addData("front_right:", wheel_powers[2]);
-        telemetry.addData("back_right:", wheel_powers[3]);
+        telemetry.addData("Front Left Power:", wheel_powers[0]);
+        telemetry.addData("Back Left Power:", wheel_powers[1]);
+        telemetry.addData("Front Right Power:", wheel_powers[2]);
+        telemetry.addData("Back Right Power:", wheel_powers[3]);
+        telemetry.addData("Front Left Speed:", move_wheel_speeds[0]);
+        telemetry.addData("Back Left Speed:", move_wheel_speeds[1]);
+        telemetry.addData("Front Right Speed:", move_wheel_speeds[2]);
+        telemetry.addData("Back Right Speed:", move_wheel_speeds[3]);
+        telemetry.addData("Front Left Speed Error:", move_wheel_speed_errors[0]);
+        telemetry.addData("Back Left Speed Error:", move_wheel_speed_errors[1]);
+        telemetry.addData("Front Right Speed Error:", move_wheel_speed_errors[2]);
+        telemetry.addData("Back Right Speed Error:", move_wheel_speed_errors[3]);
+        telemetry.addData("Distance Away:", move_distance_away);
+        telemetry.addData("Distance Travelled:", move_distance_travelled);
+        telemetry.addData("Target Wheel Velocity:", move_target_wheel_speed);
+        telemetry.addData("Front Left Rotations:", motors.get("front_right").getCurrentPosition()/MOTOR_CPR);
+        telemetry.addData("Time Delta", move_time_delta);
+        telemetry.update();
 
         return 0;
     }
