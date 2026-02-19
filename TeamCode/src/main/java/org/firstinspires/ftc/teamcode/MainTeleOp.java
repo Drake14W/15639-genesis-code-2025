@@ -120,13 +120,11 @@ public class MainTeleOp extends LinearOpMode {
     final double INTAKE_ANGULAR_DEADZONE = 0.0;
     final double INTAKE_RADIAL_DEADZONE = 0.05;
     final double INTAKE_SERVO_SPEED = 1.0;
+    final double TURRET_SPEED = 0.5;
+    final double REVOLVER_SPEED = 0.1;
     double FLYWHEEL_SPEED = 1.0;
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
-    final double LIFT_POWER = 1.0;
-    final double LIFT_SUSTAIN_POWER = 0.4;
-    final double LIFT_LOWER_POWER = 0.15;
-    boolean lift_active = false;
     double flicker_down_pos;
     double flicker_mid_pos;
     double flicker_up_pos;
@@ -171,7 +169,6 @@ public class MainTeleOp extends LinearOpMode {
     //Movement values for aimbot (april tag) macro
     double aimbot_macro_yaw;
     double aimbot_flywheel_power;
-    double aimbot_intake_crservo_power;
     double aimbot_intake_power;
     boolean aimbot_shooting;
 
@@ -247,8 +244,9 @@ public class MainTeleOp extends LinearOpMode {
         action_map.put("manual_intake", (byte) 0b00000100);
         action_map.put("manual_flywheel", (byte) 0b00001000);
         action_map.put("manual_intake_servo", (byte) 0b00010000);
-        action_map.put("lift", (byte) 0b00100000);
+        action_map.put("revolver", (byte) 0b00100000);
         action_map.put("flicker", (byte) 0b01000000);
+        action_map.put("turret", (byte) 0b10000000);
 
         //Create and assign map entries for all motors
         motors.put("front_left", hardwareMap.get(DcMotor.class, "front_left_motor"));
@@ -260,15 +258,11 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.put("flywheel", hardwareMap.get(DcMotor.class, "flywheel_motor"));
 
-        motors.put("lift_motor1", hardwareMap.get(DcMotor.class, "lift_motor1"));
-        motors.put("lift_motor2", hardwareMap.get(DcMotor.class, "lift_motor2"));
+        motors.put("turret", hardwareMap.get(DcMotor.class, "turret"));
+        motors.put("revolver", hardwareMap.get(DcMotor.class, "revolver"));
 
         //Create and assign map entries for all servos
         servos.put("flicker", hardwareMap.get(Servo.class, "flicker"));
-
-        //Create and assign map entries for all CRServos
-        crservos.put("intake_servo1", hardwareMap.get(CRServo.class, "intake_servo1"));
-        crservos.put("intake_servo2", hardwareMap.get(CRServo.class, "intake_servo2"));
 
         //Reset encoders
         for (String key : motors.keySet()) {
@@ -291,13 +285,11 @@ public class MainTeleOp extends LinearOpMode {
 
         motors.get("flywheel").setDirection(DcMotorSimple.Direction.REVERSE);
 
-        motors.get("lift_motor1").setDirection(DcMotorSimple.Direction.REVERSE);
-        motors.get("lift_motor2").setDirection(DcMotorSimple.Direction.REVERSE
-        );
-
         //Set direction of servos
-        crservos.get("intake_servo1").setDirection(DcMotorSimple.Direction.FORWARD);
-        crservos.get("intake_servo2").setDirection(DcMotorSimple.Direction.REVERSE);
+        motors.get("turret").setDirection(DcMotorSimple.Direction.FORWARD);
+        motors.get("revolver").setDirection(DcMotorSimple.Direction.REVERSE);
+
+        servos.get("flicker").setDirection(Servo.Direction.FORWARD);
 
         //Initialize custom gamepads
         custom_gamepad_1 = new CustomGamepad(gamepad1);
@@ -319,9 +311,9 @@ public class MainTeleOp extends LinearOpMode {
         }
 
         //Settings for servos
-        flicker_down_pos = 0.25;
-        flicker_mid_pos = 0.12;
-        flicker_up_pos = 0.0;
+        flicker_down_pos = 0.2;
+        flicker_mid_pos = 0.75;
+        flicker_up_pos = 1.0;
 
 
         //CRServos Powers
@@ -466,21 +458,6 @@ public class MainTeleOp extends LinearOpMode {
                 action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") & (~ON_BITMASK)));
             }
 
-            //Manual intake servo control
-            if (check_mask("manual_intake_servo") && (custom_gamepad_2.get_right_trigger() > 0)) {
-                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") | ON_BITMASK));
-                crservo_powers.put("intake_servo1", INTAKE_SERVO_SPEED * custom_gamepad_2.get_right_trigger());
-                crservo_powers.put("intake_servo2", INTAKE_SERVO_SPEED * custom_gamepad_2.get_right_trigger());
-            }
-            else if (check_mask("manual_intake_servo") && (custom_gamepad_2.get_left_trigger() > 0)) {
-                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") | ON_BITMASK));
-                crservo_powers.put("intake_servo1", -INTAKE_SERVO_SPEED * custom_gamepad_2.get_left_trigger());
-                crservo_powers.put("intake_servo2", -INTAKE_SERVO_SPEED * custom_gamepad_2.get_left_trigger());
-            }
-            else {
-                action_map.put("manual_intake_servo", (byte) (action_map.get("manual_intake_servo") & (~ON_BITMASK)));
-            }
-
             //Manual flicker control gamepad1
             if (check_mask("flicker")) {
                 if (custom_gamepad_2.get_x()) {
@@ -497,38 +474,35 @@ public class MainTeleOp extends LinearOpMode {
                 }
             }
 
-            //Auto Lift Control
-            if (custom_gamepad_1.get_right_bumper() && custom_gamepad_1.get_left_bumper()) {  //lift up
-                motor_powers.put("lift_motor1", 0.0);
-                motor_powers.put("lift_motor2", 0.0);
-                lift_active = false;
-            }
-            else if (custom_gamepad_1.get_right_bumper()) {  //lift up
-                motor_powers.put("lift_motor1", LIFT_POWER);
-                motor_powers.put("lift_motor2", LIFT_POWER);
-                lift_active = true;
-            }
-            else if (custom_gamepad_1.get_left_bumper()) {  //lift down
-                motor_powers.put("lift_motor1", LIFT_LOWER_POWER);
-                motor_powers.put("lift_motor2", LIFT_LOWER_POWER);
-                lift_active = true;
-            }
-            else if (lift_active){  //Sustains lift anytime lift is being active
-                motor_powers.put("lift_motor1", LIFT_SUSTAIN_POWER);
-                motor_powers.put("lift_motor2", LIFT_SUSTAIN_POWER);
-            }
-            else {
-                motor_powers.put("lift_motor1", 0.0);
-                motor_powers.put("lift_motor2", 0.0);
-                lift_active = false;
-            }
-            if (lift_active) {
-                action_map.put("lift", (byte) (action_map.get("lift") | ON_BITMASK));
-            } else {
-                action_map.put("lift", (byte) (action_map.get("lift") & (~ON_BITMASK)));
+            //Manual turret control
+            if (check_mask("revolver")) {
+                if (custom_gamepad_2.get_a()) {
+                    action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
+                    motor_powers.put("revolver", TURRET_SPEED);
+                }
+                else {
+                    action_map.put("revolver", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
+                    motor_powers.put("revolver", 0.0);
+                }
             }
 
-            //Check for aimbot macro (EVAN CHANGED the button FROM gamepad2 to 1)
+            //Manual revolver control
+            if (check_mask("turret")) {
+                if (custom_gamepad_2.get_right_bumper()) {
+                    action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
+                    motor_powers.put("turret", TURRET_SPEED);
+                }
+                else if (custom_gamepad_2.get_left_bumper()) {
+                    action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
+                    motor_powers.put("turret", -TURRET_SPEED);
+                }
+                else {
+                    action_map.put("turret", (byte) (action_map.get("turret") & (~ON_BITMASK)));
+                    motor_powers.put("turret", 0.0);
+                }
+            }
+
+                    //Check for aimbot macro (EVAN CHANGED the button FROM gamepad2 to 1)
             if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
@@ -584,7 +558,6 @@ public class MainTeleOp extends LinearOpMode {
                                 aimbot_flywheel_power = 1;
                             }
 
-                            aimbot_intake_crservo_power = 0;
                             telemetry.addData("Wanted RPM", aimbot_needed_flywheel_rpm);
                             telemetry.addData("Exit Velocity", exit_velocity/100);
                             telemetry.addData("RPM Error", flywheel_rpm_error);
@@ -609,11 +582,9 @@ public class MainTeleOp extends LinearOpMode {
                             }
 
                             if (aimbot_shooting) {
-                                aimbot_intake_crservo_power = INTAKE_SERVO_SPEED;
                                 aimbot_intake_power = INTAKE_SPEED;
                             }
                             else {
-                                aimbot_intake_crservo_power = 0;
                                 aimbot_intake_power = 0;
                             }
                         }
@@ -661,8 +632,6 @@ public class MainTeleOp extends LinearOpMode {
                 motor_powers.put("flywheel", aimbot_flywheel_power);
 
                 motor_powers.put("intake", aimbot_intake_power);
-                crservo_powers.put("intake_servo1", aimbot_intake_crservo_power);
-                crservo_powers.put("intake_servo2", aimbot_intake_crservo_power);
             }
 
             if (custom_gamepad_1.get_b()) {
