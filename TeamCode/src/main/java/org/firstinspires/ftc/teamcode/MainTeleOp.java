@@ -31,6 +31,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -44,17 +45,16 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
-import org.threeten.bp.chrono.ChronoLocalDateTime;
+import org.firstinspires.ftc.vision.opencv.ImageRegion;
+import org.firstinspires.ftc.vision.opencv.PredominantColorProcessor;
 
 
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.lang.Math;
 import java.util.concurrent.TimeUnit;
 import android.os.Environment;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.time.LocalTime;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
 @TeleOp(name="MainTeleOp", group="Linear OpMode")
@@ -121,7 +121,14 @@ public class MainTeleOp extends LinearOpMode {
     final double INTAKE_RADIAL_DEADZONE = 0.05;
     final double INTAKE_SERVO_SPEED = 1.0;
     final double TURRET_SPEED = 0.5;
-    final double REVOLVER_SPEED = 0.1;
+    final double REVOLVER_FAST_SPEED = 0.4;
+    final double REVOLVER_SLOW_SPEED = 0.05;
+    final double REVOLVER_CPR = 537.7;
+    final double REVOLVER_ROTATION_DISTANCE = (REVOLVER_CPR*(1.0/6.0));
+    int revolver_distance_multiple;
+    RevolverController revolver_controller;
+    double revolver_target = 0;
+    final double REVOLVER_RANGE = 5.0;
     double FLYWHEEL_SPEED = 1.0;
     final double FLYWHEEL_ANGULAR_DEADZONE = 0.0;
     final double FLYWHEEL_RADIAL_DEADZONE = 0.20;
@@ -131,7 +138,7 @@ public class MainTeleOp extends LinearOpMode {
     boolean telemetry_output = true;
 
     //RPM Calculations
-    final double FLYWHEEL_CPR = 28;
+    final double FLYWHEEL_CPR = 39.2;
     double last_flywheel_revs = 0;
     double flywheel_rpm;
     double last_rpm_time;
@@ -267,12 +274,7 @@ public class MainTeleOp extends LinearOpMode {
         //Reset encoders
         for (String key : motors.keySet()) {
             motors.get(key).setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            if (key != "flywheel") {
-                motors.get(key).setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            }
-            else {
-                motors.get(key).setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-            }
+            motors.get(key).setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         }
 
         //Set direction of motors
@@ -333,6 +335,10 @@ public class MainTeleOp extends LinearOpMode {
                 //For some fucking reason the camera isn't getting autodetected so we have to do it manually
                 .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
                 .build();
+
+        revolver_controller = new RevolverController(21);
+        NormalizedColorSensor colorSensor = hardwareMap.get(NormalizedColorSensor.class, "sensor_color");
+        colorSensor.setGain(125);
 
         visionPortal = new VisionPortal.Builder()
                 .addProcessor(tagProcessor)
@@ -406,6 +412,22 @@ public class MainTeleOp extends LinearOpMode {
             last_rpm_time = runtime.milliseconds();
             telemetry.addData("Flywheel RPM", flywheel_rpm);
 
+            //Colour sensor
+            if (colorSensor.getNormalizedColors().green > 0.2) {
+                if (colorSensor.getNormalizedColors().blue > colorSensor.getNormalizedColors().green) {
+                    revolver_controller.set_ball(2);
+                    telemetry.addLine("Purple");
+                }
+                else {
+                    revolver_controller.set_ball(1);
+                    telemetry.addLine("Green");
+                }
+            }
+            else {
+                revolver_controller.set_ball(0);
+                telemetry.addLine("Gray");
+            }
+
             //Manual movement controls
             //We use gamepad1 for actually moving the robot and gamepad2 for everything else
 
@@ -463,6 +485,7 @@ public class MainTeleOp extends LinearOpMode {
                 if (custom_gamepad_2.get_x()) {
                     action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
                     servo_positions.put("flicker", flicker_up_pos);
+                    revolver_controller.remove_ball();
                 }
                 else if (custom_gamepad_2.get_y()) {
                     action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
@@ -474,19 +497,85 @@ public class MainTeleOp extends LinearOpMode {
                 }
             }
 
-            //Manual turret control
+            //Manual revolver control
             if (check_mask("revolver")) {
-                if (custom_gamepad_2.get_a()) {
-                    action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
-                    motor_powers.put("revolver", TURRET_SPEED);
+                if ((Math.abs(motors.get("revolver").getCurrentPosition() - revolver_target) < REVOLVER_RANGE) || (revolver_target == 0)) {
+                    if (custom_gamepad_2.get_dpad_right_just_pressed()) {
+                        action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
+                        revolver_target = motors.get("revolver").getCurrentPosition() + REVOLVER_ROTATION_DISTANCE/4;
+
+                        if (revolver_target < motors.get("revolver").getCurrentPosition()) {
+                            motor_powers.put("revolver", -REVOLVER_FAST_SPEED);
+                        }
+                        else {
+                            motor_powers.put("revolver", REVOLVER_FAST_SPEED);
+                        }
+                    }
+                    else if (custom_gamepad_2.get_dpad_left_just_pressed()) {
+                        action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
+                        revolver_target = motors.get("revolver").getCurrentPosition() - REVOLVER_ROTATION_DISTANCE/4;
+
+                        if (revolver_target < motors.get("revolver").getCurrentPosition()) {
+                            motor_powers.put("revolver", -REVOLVER_FAST_SPEED);
+                        }
+                        else {
+                            motor_powers.put("revolver", REVOLVER_FAST_SPEED);
+                        }
+                    }
+                    else if (custom_gamepad_2.get_a_just_pressed()) {
+                        action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
+
+                        revolver_distance_multiple = revolver_controller.shoot();
+                        if (revolver_distance_multiple != 0) {
+                            revolver_target = motors.get("revolver").getCurrentPosition() + revolver_distance_multiple*REVOLVER_ROTATION_DISTANCE;
+
+                            if (revolver_target < motors.get("revolver").getCurrentPosition()) {
+                                motor_powers.put("revolver", -REVOLVER_FAST_SPEED);
+                            } else {
+                                motor_powers.put("revolver", REVOLVER_FAST_SPEED);
+                            }
+                        }
+                    }
+                    else if (custom_gamepad_2.get_b_just_pressed()) {
+                        action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
+
+                        revolver_distance_multiple = revolver_controller.intake();
+                        if (revolver_distance_multiple != 0) {
+                            revolver_target = motors.get("revolver").getCurrentPosition() + revolver_distance_multiple*REVOLVER_ROTATION_DISTANCE;
+
+                            if (revolver_target < motors.get("revolver").getCurrentPosition()) {
+                                motor_powers.put("revolver", -REVOLVER_FAST_SPEED);
+                            } else {
+                                motor_powers.put("revolver", REVOLVER_FAST_SPEED);
+                            }
+                        }
+                    }
+                    else {
+                        action_map.put("revolver", (byte) (action_map.get("revolver") & (~ON_BITMASK)));
+                        motor_powers.put("revolver", 0.0);
+                    }
+
+                    telemetry.addLine("In Position");
                 }
                 else {
-                    action_map.put("revolver", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
-                    motor_powers.put("revolver", 0.0);
+                    if (revolver_target < motors.get("revolver").getCurrentPosition()) {
+                        motor_powers.put("revolver", -((Math.abs(revolver_target - motors.get("revolver").getCurrentPosition())/REVOLVER_ROTATION_DISTANCE)*(REVOLVER_FAST_SPEED-REVOLVER_SLOW_SPEED)+REVOLVER_SLOW_SPEED));
+                    }
+                    else {
+                        motor_powers.put("revolver", ((Math.abs(revolver_target - motors.get("revolver").getCurrentPosition())/REVOLVER_ROTATION_DISTANCE)*(REVOLVER_FAST_SPEED-REVOLVER_SLOW_SPEED)+REVOLVER_SLOW_SPEED));
+                    }
+                    telemetry.addLine("Out of Position");
                 }
             }
+            telemetry.addData("Revolver Position:", revolver_controller.position);
+            telemetry.addData("Revolver 0:", revolver_controller.balls[0]);
+            telemetry.addData("Revolver 1:", revolver_controller.balls[1]);
+            telemetry.addData("Revolver 2:", revolver_controller.balls[2]);
+            telemetry.addData("Revolver 3:", revolver_controller.balls[3]);
+            telemetry.addData("Revolver 4:", revolver_controller.balls[4]);
+            telemetry.addData("Revolver 5:", revolver_controller.balls[5]);
 
-            //Manual revolver control
+            //Manual turret control
             if (check_mask("turret")) {
                 if (custom_gamepad_2.get_right_bumper()) {
                     action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
