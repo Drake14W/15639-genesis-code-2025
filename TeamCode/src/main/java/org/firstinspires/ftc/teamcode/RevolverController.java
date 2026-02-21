@@ -42,7 +42,7 @@ public class RevolverController {
 
     public int position = 1;
 
-    public RevolverController(int pattern) {
+    public void set_pattern(int pattern) {
         switch (pattern) {
             case 21:
                 this.pattern[0] = 1;

@@ -104,6 +104,8 @@ public class MainTeleOp extends LinearOpMode {
     //Used to describe movement
     private double axial, lateral, trigger_yaw, stick_yaw, yaw;
 
+    boolean alliance = true; //true = red and false = blue
+
     //Globals for movement
     final double LONG_LAT_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
     final double LONG_LAT_ANGULAR_DEADZONE = 2;   //In degrees
@@ -118,7 +120,7 @@ public class MainTeleOp extends LinearOpMode {
     final double INTAKE_ANGULAR_DEADZONE = 0.0;
     final double INTAKE_RADIAL_DEADZONE = 0.05;
     final double INTAKE_SERVO_SPEED = 1.0;
-    final double REVOLVER_FAST_SPEED = 0.4;
+    final double REVOLVER_FAST_SPEED = 0.3;
     final double REVOLVER_SLOW_SPEED = 0.05;
     final double REVOLVER_CPR = 537.7;
     final double REVOLVER_ROTATION_DISTANCE = (REVOLVER_CPR*(1.0/6.0));
@@ -187,16 +189,16 @@ public class MainTeleOp extends LinearOpMode {
     final double MAX_FLYWHEEL_RPM = 18000;
     final double GRAVITY = 9.81;
     final double BUCKET_HEIGHT = 98.45;
-    final double CAMERA_HEIGHT = 32;
-    final double CAMERA_X_OFFSET = 7; //To the left of the launcher is positive
-    final double CAMERA_Z_OFFSET = 25; //Forward from the launcher is positive
+    final double CAMERA_HEIGHT = 45;
+    final double CAMERA_X_OFFSET = 0; //To the left of the launcher is positive
+    final double CAMERA_Z_OFFSET = 0; //Forward from the launcher is positive
     final double CAMERA_YAW = 0; //Left to right angle (positive is left)
-    final double CAMERA_PITCH = 25; //Up-down angle (positive is up)
+    final double CAMERA_PITCH = 15; //Up-down angle (positive is up)
     final double CAMERA_ROLL = 0; //Up-down rotation angle (like this for positive: ↓---↑)
-    final double EXIT_HEIGHT = 21;
-    final double EXIT_ANGLE = Math.toRadians(50);
+    final double EXIT_HEIGHT = 40;
+    final double EXIT_ANGLE = Math.toRadians(45);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 2.00;
+    final double MAGIC_FLYWHEEL_NUMBER = 2.5;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double DERIVATIVE_COEFFICIENT = 0.0;
@@ -206,7 +208,7 @@ public class MainTeleOp extends LinearOpMode {
     double pid_last_time;
     double rpm_previous_error;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
-    final double LAMBDA_VAL = 6.2;
+    final double LAMBDA_VAL = 4.0;
     final double PROPORTIONAL_COEFFIEICENT = 1.0 / LAMBDA_VAL;
     final double INTEGRAL_COEFFICIENT = 1.0 / Math.pow(LAMBDA_VAL, 2);
     //final double DERIVATIVE_COEFFICIENT = 0.0005;
@@ -413,6 +415,15 @@ public class MainTeleOp extends LinearOpMode {
             last_rpm_time = runtime.milliseconds();
             telemetry.addData("Flywheel RPM", flywheel_rpm);
 
+            //Alliance toggle
+            if (custom_gamepad_1.get_x()) {
+                alliance = false;
+            }
+            else if (custom_gamepad_1.get_b()) {
+                alliance = true;
+            }
+            telemetry.addData("Alliance:", alliance ? "Red" : "Blue");
+
             //Colour sensor
             if (colorSensor.getNormalizedColors().green > 0.2) {
                 if (colorSensor.getNormalizedColors().blue > colorSensor.getNormalizedColors().green) {
@@ -607,12 +618,12 @@ public class MainTeleOp extends LinearOpMode {
                     }
 
                     telemetry.addLine("Detection");
-                    if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && ((tag.id == 20) || (tag.id == 24))) {
+                    if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == (alliance ? 24 : 20))) {
                         tag_bearing = tag.ftcPose.bearing;
                         if ((tag_bearing < -BEARING_RANGE)) {
                             telemetry.addLine("Tracking");
                             if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) < (MAX_TURRET_ROTATION*0.95)) {
-                                motor_powers.put("turret", -(Math.abs(tag_bearing/10)*(MAX_TURRET_SPEED-MIN_TURRET_SPEED) + MIN_TURRET_SPEED));
+                                motor_powers.put("turret", -(Math.abs(tag_bearing/50)*(MAX_TURRET_SPEED-MIN_TURRET_SPEED) + MIN_TURRET_SPEED));
                             }
                             else {
                                 sweeping = -1;
@@ -620,8 +631,8 @@ public class MainTeleOp extends LinearOpMode {
                         }
                         else if ((tag_bearing > BEARING_RANGE)) {
                             telemetry.addLine("Tracking");
-                            if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > 0.05) {
-                                motor_powers.put("turret", (Math.abs(tag_bearing/10)*(MAX_TURRET_SPEED-MIN_TURRET_SPEED) + MIN_TURRET_SPEED));
+                            if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
+                                motor_powers.put("turret", (Math.abs(tag_bearing/50)*(MAX_TURRET_SPEED-MIN_TURRET_SPEED) + MIN_TURRET_SPEED));
                             }
                             else {
                                 sweeping = 1;
@@ -632,7 +643,7 @@ public class MainTeleOp extends LinearOpMode {
                             sweeping = 0;
                         }
                     }
-                    else {
+                    else if (sweeping == 0) {
                         telemetry.addLine("No Detection");
                         telemetry.addLine("Sweeping");
                         if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > MAX_TURRET_ROTATION/10) {
@@ -643,7 +654,7 @@ public class MainTeleOp extends LinearOpMode {
                         }
                     }
                 }
-                else {
+                else if (sweeping == 0){
                     telemetry.addLine("No Detection");
                     telemetry.addLine("Sweeping");
                     if (sweeping == 0) {
@@ -666,7 +677,7 @@ public class MainTeleOp extends LinearOpMode {
                 }
                 else if (sweeping == -1) {
                     telemetry.addLine("Sweeping");
-                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > 0.05) {
+                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
                         motor_powers.put("turret", -(MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
                     }
                     else {
@@ -695,7 +706,7 @@ public class MainTeleOp extends LinearOpMode {
                             continue;
                         }
                         //1000000000 converts from nanoseconds to seconds
-                        if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && ((tag.id == 20) || (tag.id == 24))) {
+                        if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == (alliance ? 24 : 20))) {
                             //Scan the tag
                             telemetry.addData("ID", tag.metadata.id);
                             tag_bearing = tag.ftcPose.bearing;
@@ -746,7 +757,7 @@ public class MainTeleOp extends LinearOpMode {
                     }
                 }
                 if (aimbot_shooting) {
-                    aimbot_intake_power = INTAKE_SPEED;
+
                 }
                 else {
                     aimbot_intake_power = 0;
@@ -771,7 +782,19 @@ public class MainTeleOp extends LinearOpMode {
                     yaw = 0;
                 }
 
-                motor_powers.put("turret", motor_powers.get("turret")+(yaw*ROTATION_TURRET_CONVERSION));
+                if (yaw > 0) {
+                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) < (MAX_TURRET_ROTATION*0.95)) {
+                        motor_powers.put("turret", motor_powers.get("turret")+(yaw*ROTATION_TURRET_CONVERSION));
+                    }
+                }
+                else if (yaw < 0) {
+                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
+                        motor_powers.put("turret", motor_powers.get("turret")+(yaw*ROTATION_TURRET_CONVERSION));
+                    }
+                    else {
+                        sweeping = 1;
+                    }
+                }
 
                 //Set engine powers
                 motor_powers.put("front_left", (axial + lateral + yaw)*movement_speed);
