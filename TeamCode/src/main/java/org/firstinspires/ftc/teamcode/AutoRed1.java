@@ -208,7 +208,7 @@ public class AutoRed1 extends LinearOpMode {
     double pid_last_time;
     double rpm_previous_error;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
-    final double LAMBDA_VAL = 6.2;
+    final double LAMBDA_VAL = 3.8;
     final double PROPORTIONAL_COEFFIEICENT = 1.0 / LAMBDA_VAL;
     final double INTEGRAL_COEFFICIENT = 1.0 / Math.pow(LAMBDA_VAL, 2);
     //final double DERIVATIVE_COEFFICIENT = 0.0005;

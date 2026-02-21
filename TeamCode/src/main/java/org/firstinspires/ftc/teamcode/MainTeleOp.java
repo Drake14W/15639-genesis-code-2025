@@ -198,7 +198,7 @@ public class MainTeleOp extends LinearOpMode {
     final double EXIT_HEIGHT = 40;
     final double EXIT_ANGLE = Math.toRadians(45);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 2.5;
+    final double MAGIC_FLYWHEEL_NUMBER = 2.0;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double DERIVATIVE_COEFFICIENT = 0.0;
@@ -208,7 +208,7 @@ public class MainTeleOp extends LinearOpMode {
     double pid_last_time;
     double rpm_previous_error;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
-    final double LAMBDA_VAL = 4.0;
+    final double LAMBDA_VAL = 3.8;
     final double PROPORTIONAL_COEFFIEICENT = 1.0 / LAMBDA_VAL;
     final double INTEGRAL_COEFFICIENT = 1.0 / Math.pow(LAMBDA_VAL, 2);
     //final double DERIVATIVE_COEFFICIENT = 0.0005;
@@ -691,14 +691,15 @@ public class MainTeleOp extends LinearOpMode {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
-                    pid_last_time = runtime.milliseconds();
+                    pid_last_time = runtime.seconds();
                     rpm_error_integral_val = 0;
                     rpm_previous_error = 0;
                     aimbot_shooting = false;
+
                     aimbot_flywheel_power = 0;
                 }
                 else {
-                    if (tagProcessor.getDetections().size() > 0) {
+                    if ((tagProcessor.getDetections().size() > 0) || (aimbot_shooting)) {
                         try {
                             tag = tagProcessor.getDetections().get(0);
                         }
@@ -706,12 +707,14 @@ public class MainTeleOp extends LinearOpMode {
                             continue;
                         }
                         //1000000000 converts from nanoseconds to seconds
-                        if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == (alliance ? 24 : 20))) {
+                        if (((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == (alliance ? 24 : 20))) || (aimbot_shooting)) {
                             //Scan the tag
                             telemetry.addData("ID", tag.metadata.id);
                             tag_bearing = tag.ftcPose.bearing;
                             tag_elevation = tag.ftcPose.elevation;
-                            tag_range = tag.ftcPose.range;
+                            if (tag.ftcPose.range > 0) {
+                                tag_range = tag.ftcPose.range;
+                            }
                             telemetry.addData("Bearing:", tag_bearing*(180/Math.PI));
 
                             //Get the flywheel running and PID this motherfucker (XD alright)
@@ -744,7 +747,7 @@ public class MainTeleOp extends LinearOpMode {
                             telemetry.addData("RPM Error", flywheel_rpm_error);
                             telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                             //We're rotated too far left
-                            if ((tag_bearing > -BEARING_RANGE) && (tag_bearing > -BEARING_RANGE) && (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE)) {
+                            if (((tag_bearing > -BEARING_RANGE) && (tag_bearing > -BEARING_RANGE) && (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE)) || (aimbot_shooting)) {
                                 telemetry.addLine("Shooting");
                                 aimbot_macro_yaw = 0;
                                 aimbot_shooting = true;
@@ -755,12 +758,6 @@ public class MainTeleOp extends LinearOpMode {
                         //Log data for PID tuning purposes
                         m_csvLogString.append(runtime.milliseconds()).append(", ").append(flywheel_rpm).append(", ").append(aimbot_needed_flywheel_rpm).append(", ").append(aimbot_flywheel_power).append("\n");
                     }
-                }
-                if (aimbot_shooting) {
-
-                }
-                else {
-                    aimbot_intake_power = 0;
                 }
             }
             if (custom_gamepad_2.get_dpad_down()) {
