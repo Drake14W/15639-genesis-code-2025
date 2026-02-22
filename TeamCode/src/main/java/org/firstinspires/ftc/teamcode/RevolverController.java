@@ -37,7 +37,7 @@ public class RevolverController {
 
     public int[] balls = {0, -1, 0, -1, 0, -1};
 
-    public int[] pattern = new int[3];
+    public int[] pattern = {2, 2, 2};
     public int pattern_pos = 0;
 
     public int position = 1;
@@ -48,14 +48,17 @@ public class RevolverController {
                 this.pattern[0] = 1;
                 this.pattern[1] = 2;
                 this.pattern[2] = 2;
+                break;
             case 22:
                 this.pattern[0] = 1;
                 this.pattern[1] = 2;
                 this.pattern[2] = 1;
+                break;
             case 23:
                 this.pattern[0] = 1;
                 this.pattern[1] = 1;
                 this.pattern[2] = 2;
+                break;
         }
     }
 

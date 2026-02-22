@@ -126,7 +126,7 @@ public class AutoRed1 extends LinearOpMode {
     RevolverController revolver_controller;
     double revolver_target = 0;
     final double REVOLVER_RANGE = 5.0;
-    final double MAX_TURRET_SPEED = 1.0;
+    final double MAX_TURRET_SPEED = 0.5;
     final double MIN_TURRET_SPEED = 0.05;
     final double MAX_TURRET_ROTATION = 2.2*REVOLVER_CPR;
     final double ROTATION_TURRET_CONVERSION = 0.5;
@@ -198,7 +198,7 @@ public class AutoRed1 extends LinearOpMode {
     final double EXIT_HEIGHT = 40;
     final double EXIT_ANGLE = Math.toRadians(45);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 2.00;
+    final double MAGIC_FLYWHEEL_NUMBER = 2.30;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double DERIVATIVE_COEFFICIENT = 0.0;
@@ -208,7 +208,7 @@ public class AutoRed1 extends LinearOpMode {
     double pid_last_time;
     double rpm_previous_error;
     final double FLYWHEEL_RPM_ERROR_RANGE = 100; //We still shoot even if we're this far away from our desired rpm
-    final double LAMBDA_VAL = 3.8;
+    final double LAMBDA_VAL = 3.0;
     final double PROPORTIONAL_COEFFIEICENT = 1.0 / LAMBDA_VAL;
     final double INTEGRAL_COEFFICIENT = 1.0 / Math.pow(LAMBDA_VAL, 2);
     //final double DERIVATIVE_COEFFICIENT = 0.0005;
@@ -305,6 +305,8 @@ public class AutoRed1 extends LinearOpMode {
         custom_gamepad_1 = new CustomGamepad(gamepad1);
         custom_gamepad_2 = new CustomGamepad(gamepad2);
 
+        servo_positions.put("flicker", flicker_down_pos);
+
         //Turn on the brakes for 0 power
         for (String key : motors.keySet()) {
             if (key == "flywheel") {
@@ -341,13 +343,10 @@ public class AutoRed1 extends LinearOpMode {
                 .setCameraPose(cam_position, yaw_pitch_roll_angles)
                 .setOutputUnits(DistanceUnit.CM, AngleUnit.RADIANS)
                 //For some fucking reason the camera isn't getting autodetected so we have to do it manually
-                .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
+                .setLensIntrinsics(1385.92f, 1385.92f, 951.982f, 534.084f)
                 .build();
 
         revolver_controller = new RevolverController();
-        revolver_controller.pattern[0] = 1;
-        revolver_controller.pattern[2] = 2;
-        revolver_controller.pattern[4] = 2;
         NormalizedColorSensor colorSensor = hardwareMap.get(NormalizedColorSensor.class, "sensor_color");
         colorSensor.setGain(125);
 
@@ -358,9 +357,13 @@ public class AutoRed1 extends LinearOpMode {
                 //stream format
                 .setStreamFormat(VisionPortal.StreamFormat.YUY2)
                 //sets camera resolution; turn down if performance issues
-                .setCameraResolution(new Size(640, 480))
+                .setCameraResolution(new Size(1920, 1080))
                 //as above
                 .build();
+
+        revolver_controller.balls[0] = 1;
+        revolver_controller.balls[2] = 2;
+        revolver_controller.balls[4] = 2;
 
         //Wait for camera to start up
         while (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
@@ -384,7 +387,7 @@ public class AutoRed1 extends LinearOpMode {
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
-        int actions[] = {1, 0, 0, 2, 0, 3, 0, 4, 0, 3, 0, 4, 0, 3, 0, 4, 0, 7, 5, 6, -1};
+        int actions[] = {1, 0, 0, 2, 0, 4, 0, 8, 0, 3, 0, 4, 8, 0, 0, 3, 0, 4, 0, 8, 0, 7, 5, 6, -1};
         int action_index = 0;
 
         //Wait until the the start button is pressed on the driver hub
@@ -397,6 +400,7 @@ public class AutoRed1 extends LinearOpMode {
 
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
+            telemetry.addData("Action Index:", action_index);
             //Update motor rpm
             //x60000 converts from milliseconds to minutes
             flywheel_rpm = (motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR - last_flywheel_revs) / (runtime.milliseconds() - last_rpm_time) * 60000;
@@ -418,7 +422,7 @@ public class AutoRed1 extends LinearOpMode {
                 }
             }
 
-            if (actions[action_index] == 0) {
+            if (actions[action_index] == 6) {
                 if (last_time < 0) {
                     last_time = runtime.seconds();
                 }
@@ -477,7 +481,7 @@ public class AutoRed1 extends LinearOpMode {
                             motor_powers.put("revolver", REVOLVER_FAST_SPEED);
                         }
                     }
-                    else if (actions[action_index] == 3) {
+                    else if ((actions[action_index] == 3) && (aimbot_shooting)) {
                         action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
 
                         revolver_distance_multiple = revolver_controller.shoot();
@@ -551,6 +555,16 @@ public class AutoRed1 extends LinearOpMode {
                 }
                 else {
                     motor_powers.put("turret", 0.0);
+                }
+            }
+            if (actions[action_index] == 8) {
+                action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
+                if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
+                    motor_powers.put("turret", (MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
+                }
+                else {
+                    motor_powers.put("turret", 0.0);
+                    action_index+=1;
                 }
             }
 
@@ -630,15 +644,16 @@ public class AutoRed1 extends LinearOpMode {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
-                    pid_last_time = runtime.milliseconds();
+                    pid_last_time = runtime.seconds();
                     rpm_error_integral_val = 0;
                     rpm_previous_error = 0;
                     aimbot_shooting = false;
+                    action_index += 1;
+
                     aimbot_flywheel_power = 0;
-                    action_index+=1;
                 }
                 else {
-                    if (tagProcessor.getDetections().size() > 0) {
+                    if ((tagProcessor.getDetections().size() > 0) || (aimbot_shooting)) {
                         try {
                             tag = tagProcessor.getDetections().get(0);
                         }
@@ -646,12 +661,14 @@ public class AutoRed1 extends LinearOpMode {
                             continue;
                         }
                         //1000000000 converts from nanoseconds to seconds
-                        if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && ((tag.id == 20) || (tag.id == 24))) {
+                        if (((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == (alliance ? 24 : 20))) || (aimbot_shooting)) {
                             //Scan the tag
                             telemetry.addData("ID", tag.metadata.id);
                             tag_bearing = tag.ftcPose.bearing;
                             tag_elevation = tag.ftcPose.elevation;
-                            tag_range = tag.ftcPose.range;
+                            if (tag.ftcPose.range > 0) {
+                                tag_range = tag.ftcPose.range;
+                            }
                             telemetry.addData("Bearing:", tag_bearing*(180/Math.PI));
 
                             //Get the flywheel running and PID this motherfucker (XD alright)
@@ -664,13 +681,17 @@ public class AutoRed1 extends LinearOpMode {
 
                             flywheel_rpm_error = aimbot_needed_flywheel_rpm - flywheel_rpm;
 
-                            pid_time_delta = runtime.milliseconds() - pid_last_time;
-                            rpm_error_integral_val += flywheel_rpm_error*pid_time_delta;
-                            pid_last_time = runtime.milliseconds();
+                            pid_time_delta = runtime.seconds() - pid_last_time;
+                            rpm_error_integral_val += flywheel_rpm_error * pid_time_delta;
+                            pid_last_time = runtime.seconds();
                             rpm_previous_error = flywheel_rpm_error;
 
                             u = PROPORTIONAL_COEFFIEICENT * flywheel_rpm_error + INTEGRAL_COEFFICIENT * rpm_error_integral_val;
                             aimbot_flywheel_power = inverse_model(flywheel_rpm, u);
+
+                            if ((aimbot_flywheel_power < 0.0) || (aimbot_flywheel_power > 1.0)) {
+                                rpm_error_integral_val -= flywheel_rpm_error * pid_time_delta;
+                            }
 
                             if (aimbot_flywheel_power < 0) {
                                 aimbot_flywheel_power = 0;
@@ -684,7 +705,7 @@ public class AutoRed1 extends LinearOpMode {
                             telemetry.addData("RPM Error", flywheel_rpm_error);
                             telemetry.addData("Flywheel Power", aimbot_flywheel_power);
                             //We're rotated too far left
-                            if ((tag_bearing > -BEARING_RANGE) && (tag_bearing > -BEARING_RANGE) && (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE)) {
+                            if (((tag_bearing > -BEARING_RANGE) && (tag_bearing > -BEARING_RANGE) && (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE)) || (aimbot_shooting)) {
                                 telemetry.addLine("Shooting");
                                 aimbot_macro_yaw = 0;
                                 aimbot_shooting = true;
@@ -696,16 +717,13 @@ public class AutoRed1 extends LinearOpMode {
                         m_csvLogString.append(runtime.milliseconds()).append(", ").append(flywheel_rpm).append(", ").append(aimbot_needed_flywheel_rpm).append(", ").append(aimbot_flywheel_power).append("\n");
                     }
                 }
-                if (aimbot_shooting) {
-                    aimbot_intake_power = INTAKE_SPEED;
-                }
-                else {
-                    aimbot_intake_power = 0;
-                }
             }
             if (actions[action_index] == 5) {
                 //Turn off macro
+                //Turn off macro
                 action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
+                aimbot_shooting = false;
+                aimbot_flywheel_power = 0;
                 action_index += 1;
             }
 
@@ -717,9 +735,10 @@ public class AutoRed1 extends LinearOpMode {
                     revolver_controller.remove_ball();
                     action_index+=1;
                 }
-                else if (action_index != 0){
+                else if (actions[action_index] == 8){
                     action_map.put("flicker", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
                     servo_positions.put("flicker", flicker_down_pos);
+                    action_index+=1;
                 }
             }
 

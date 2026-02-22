@@ -26,8 +26,8 @@ package org.firstinspires.ftc.teamcode;
 
 import android.util.Size;
 
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -46,18 +46,13 @@ import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-
 import java.util.HashMap;
-import java.lang.Math;
 import java.util.concurrent.TimeUnit;
-import android.os.Environment;
-import java.io.FileWriter;
-import java.io.IOException;
 
 //This decorator puts this opmode into selected the name and group on the driver hub menu
-@TeleOp(name="MainTeleOp", group="Linear OpMode")
+@Autonomous(name="AutoBlue2", group="Linear OpMode")
 //Since java is weird, this is essentially the equivalent of a main method in C, but instead it's a class. Also, we "extend" this class from the library class LinearOpMode which makes this into a proper teleop opmode
-public class MainTeleOp extends LinearOpMode {
+public class AutoBlue2 extends LinearOpMode {
     //Create the variables for the motors and servos and initializes a variable that keeps track of how long the opmode has been running
     private ElapsedTime runtime = new ElapsedTime();
 
@@ -104,8 +99,6 @@ public class MainTeleOp extends LinearOpMode {
     //Used to describe movement
     private double axial, lateral, trigger_yaw, stick_yaw, yaw;
 
-    boolean alliance = true; //true = red and false = blue
-
     //Globals for movement
     final double LONG_LAT_RADIAL_DEADZONE = 0.0;  //Decimal from 0-1
     final double LONG_LAT_ANGULAR_DEADZONE = 2;   //In degrees
@@ -120,7 +113,7 @@ public class MainTeleOp extends LinearOpMode {
     final double INTAKE_ANGULAR_DEADZONE = 0.0;
     final double INTAKE_RADIAL_DEADZONE = 0.05;
     final double INTAKE_SERVO_SPEED = 1.0;
-    final double REVOLVER_FAST_SPEED = 0.3;
+    final double REVOLVER_FAST_SPEED = 0.4;
     final double REVOLVER_SLOW_SPEED = 0.05;
     final double REVOLVER_CPR = 537.7;
     final double REVOLVER_ROTATION_DISTANCE = (REVOLVER_CPR*(1.0/6.0));
@@ -128,7 +121,7 @@ public class MainTeleOp extends LinearOpMode {
     RevolverController revolver_controller;
     double revolver_target = 0;
     final double REVOLVER_RANGE = 5.0;
-    final double MAX_TURRET_SPEED = 1.0;
+    final double MAX_TURRET_SPEED = 0.5;
     final double MIN_TURRET_SPEED = 0.05;
     final double MAX_TURRET_ROTATION = 2.2*REVOLVER_CPR;
     final double ROTATION_TURRET_CONVERSION = 0.5;
@@ -184,6 +177,8 @@ public class MainTeleOp extends LinearOpMode {
     double aimbot_intake_power;
     boolean aimbot_shooting;
 
+    boolean alliance = true;
+
     //Calculation values for aimbot
     double exit_velocity;
     final double MAX_FLYWHEEL_RPM = 18000;
@@ -198,7 +193,7 @@ public class MainTeleOp extends LinearOpMode {
     final double EXIT_HEIGHT = 40;
     final double EXIT_ANGLE = Math.toRadians(45);
     final double BUCKET_WIDTH = 37; //In cm
-    final double MAGIC_FLYWHEEL_NUMBER = 2.40;
+    final double MAGIC_FLYWHEEL_NUMBER = 2.30;
     double flywheel_rpm_error;
     double aimbot_needed_flywheel_rpm;
     final double DERIVATIVE_COEFFICIENT = 0.0;
@@ -242,6 +237,8 @@ public class MainTeleOp extends LinearOpMode {
     //To log data for PID tuning
     StringBuffer m_csvLogString = new StringBuffer();
     private static final String DATE_FORMAT_NOW = "yyyy-MM-dd_HH-mm-ss";
+
+    double last_time = -1;
 
     //We have to override this function since it has already been defined in the parent class LinearOpMode
     @Override
@@ -303,6 +300,8 @@ public class MainTeleOp extends LinearOpMode {
         custom_gamepad_1 = new CustomGamepad(gamepad1);
         custom_gamepad_2 = new CustomGamepad(gamepad2);
 
+        servo_positions.put("flicker", flicker_down_pos);
+
         //Turn on the brakes for 0 power
         for (String key : motors.keySet()) {
             if (key == "flywheel") {
@@ -339,13 +338,10 @@ public class MainTeleOp extends LinearOpMode {
                 .setCameraPose(cam_position, yaw_pitch_roll_angles)
                 .setOutputUnits(DistanceUnit.CM, AngleUnit.RADIANS)
                 //For some fucking reason the camera isn't getting autodetected so we have to do it manually
-                .setLensIntrinsics(622.001f, 622.001f, 319.803f, 241.251)
+                .setLensIntrinsics(1385.92f, 1385.92f, 951.982f, 534.084f)
                 .build();
 
         revolver_controller = new RevolverController();
-        revolver_controller.balls[0] = 1;
-        revolver_controller.balls[2] = 2;
-        revolver_controller.balls[4] = 2;
         NormalizedColorSensor colorSensor = hardwareMap.get(NormalizedColorSensor.class, "sensor_color");
         colorSensor.setGain(125);
 
@@ -356,9 +352,13 @@ public class MainTeleOp extends LinearOpMode {
                 //stream format
                 .setStreamFormat(VisionPortal.StreamFormat.YUY2)
                 //sets camera resolution; turn down if performance issues
-                .setCameraResolution(new Size(640, 480))
+                .setCameraResolution(new Size(1920, 1080))
                 //as above
                 .build();
+
+        revolver_controller.balls[0] = 1;
+        revolver_controller.balls[2] = 2;
+        revolver_controller.balls[4] = 2;
 
         //Wait for camera to start up
         while (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
@@ -382,6 +382,9 @@ public class MainTeleOp extends LinearOpMode {
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
+        int actions[] = {6, -1};
+        int action_index = 0;
+
         //Wait until the the start button is pressed on the driver hub
         waitForStart();
 
@@ -392,25 +395,7 @@ public class MainTeleOp extends LinearOpMode {
 
         //Main loop. This runs until stop is pressed on the driver hub
         while (opModeIsActive()) {
-            //Update gamepad input
-            custom_gamepad_1.update();
-            custom_gamepad_2.update();
-
-            //Speed toggle
-            if (custom_gamepad_1.get_y_just_pressed()) {
-                if (movement_speed == MAX_MOVEMENT_SPEED) {
-                    movement_speed /= 2;
-                }
-                else {
-                    movement_speed = MAX_MOVEMENT_SPEED;
-                }
-            }
-
-            //Debug toggle
-            if (custom_gamepad_1.get_y_just_pressed()) {
-                telemetry_output = !telemetry_output;
-            }
-
+            telemetry.addData("Action Index:", action_index);
             //Update motor rpm
             //x60000 converts from milliseconds to minutes
             flywheel_rpm = (motors.get("flywheel").getCurrentPosition()/FLYWHEEL_CPR - last_flywheel_revs) / (runtime.milliseconds() - last_rpm_time) * 60000;
@@ -418,14 +403,37 @@ public class MainTeleOp extends LinearOpMode {
             last_rpm_time = runtime.milliseconds();
             telemetry.addData("Flywheel RPM", flywheel_rpm);
 
-            //Alliance toggle
-            if (custom_gamepad_1.get_x()) {
-                alliance = false;
+            if (action_index == -1) {
+                break;
             }
-            else if (custom_gamepad_1.get_b()) {
-                alliance = true;
+
+            if (actions[action_index] == 0) {
+                if (last_time < 0) {
+                    last_time = runtime.seconds();
+                }
+                else if ((runtime.seconds()-last_time) > 0.5) {
+                    action_index+=1;
+                    last_time = -1;
+                }
             }
-            telemetry.addData("Alliance:", alliance ? "Red" : "Blue");
+
+            if (actions[action_index] == 6) {
+                if (last_time < 0) {
+                    last_time = runtime.seconds();
+                }
+                else {
+                    if ((runtime.seconds()-last_time) > 0.5) {
+                        action_index+=1;
+                        last_time = -1;
+                    }
+                    else {
+                        motor_powers.put("front_left", movement_speed);
+                        motor_powers.put("front_right", movement_speed);
+                        motor_powers.put("back_left", movement_speed);
+                        motor_powers.put("back_right", movement_speed);
+                    }
+                }
+            }
 
             //Colour sensor
             if (colorSensor.getNormalizedColors().green > 0.2) {
@@ -443,76 +451,7 @@ public class MainTeleOp extends LinearOpMode {
                 telemetry.addLine("Gray");
             }
 
-            //Manual movement controls
-            //We use gamepad1 for actually moving the robot and gamepad2 for everything else
-
-            //Controls latitudinal and longitudinal movement with left stick
-            //Vertical movement (up is negative on the joystick)
-            axial = custom_gamepad_1.get_left_stick_y(LONG_LAT_ANGULAR_DEADZONE, LONG_LAT_RADIAL_DEADZONE);
-            //Horizontal movement
-            lateral = custom_gamepad_1.get_left_stick_x(LONG_LAT_ANGULAR_DEADZONE, LONG_LAT_RADIAL_DEADZONE);
-            //Rotation calculation
-            trigger_yaw = ROTATION_SPEED * (-custom_gamepad_1.get_left_trigger() + custom_gamepad_1.get_right_trigger());
-            stick_yaw = ROTATION_SPEED * (custom_gamepad_1.get_right_stick_x(ROTATION_ANGULAR_DEADZONE, ROTATION_RADIAL_DEADZONE));
-
-            //Update manual movement state
-            if ((Math.abs(axial) + Math.abs(lateral) + Math.abs(trigger_yaw) + Math.abs(stick_yaw)) > 0) {
-                if (check_mask("manual_movement")) {
-                    //Set the manual movement byte to on
-                    action_map.put("manual_movement", (byte) (action_map.get("manual_movement") | ON_BITMASK));
-                    if (Math.abs(trigger_yaw) > 0) {
-                        //Set the trigger movement byte to on
-                        action_map.put("trigger_rotation", (byte) (action_map.get("trigger_rotation") | ON_BITMASK));
-                        action_map.put("stick_rotation", (byte) (action_map.get("stick_rotation") & (~ON_BITMASK)));
-                    } else if (Math.abs(stick_yaw) > 0) {
-                        //Set the trigger movement byte to on
-                        action_map.put("stick_rotation", (byte) (action_map.get("stick_rotation") | ON_BITMASK));
-                        action_map.put("trigger_rotation", (byte) (action_map.get("trigger_rotation") & (~ON_BITMASK)));
-                    }
-                }
-            }
-            else {
-                action_map.put("manual_movement", (byte) (action_map.get("manual_movement") & (~ON_BITMASK)));
-                action_map.put("stick_rotation", (byte) (action_map.get("stick_rotation") & (~ON_BITMASK)));
-                action_map.put("trigger_rotation", (byte) (action_map.get("trigger_rotation") & (~ON_BITMASK)));
-            }
-
-            //Manual intake control
-            if (check_mask("manual_intake") && (Math.abs(custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE)) > 0)) {
-                action_map.put("manual_intake", (byte) (action_map.get("manual_intake") | ON_BITMASK));
-                motor_powers.put("intake", INTAKE_SPEED * custom_gamepad_2.get_right_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE));
-            }
-            else {
-                action_map.put("manual_intake", (byte) (action_map.get("manual_intake") & (~ON_BITMASK)));
-            }
-
-            //Manual flywheel control
-            if (check_mask("manual_flywheel") && (Math.abs(custom_gamepad_2.get_left_stick_y(INTAKE_ANGULAR_DEADZONE, INTAKE_RADIAL_DEADZONE)) > 0)) {
-                action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") | ON_BITMASK));
-                motor_powers.put("flywheel", (FLYWHEEL_SPEED) * custom_gamepad_2.get_left_stick_y(FLYWHEEL_ANGULAR_DEADZONE, FLYWHEEL_RADIAL_DEADZONE));
-            }
-            else {
-                action_map.put("manual_flywheel", (byte) (action_map.get("manual_flywheel") & (~ON_BITMASK)));
-            }
-
-            //Manual flicker control gamepad1
-            if (check_mask("flicker")) {
-                if (custom_gamepad_2.get_x()) {
-                    action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
-                    servo_positions.put("flicker", flicker_up_pos);
-                    revolver_controller.remove_ball();
-                }
-                else if (custom_gamepad_2.get_y()) {
-                    action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
-                    servo_positions.put("flicker", flicker_mid_pos);
-                }
-                else {
-                    action_map.put("flicker", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
-                    servo_positions.put("flicker", flicker_down_pos);
-                }
-            }
-
-            //Manual revolver control
+            //Revolver control
             if (check_mask("revolver")) {
                 if ((Math.abs(motors.get("revolver").getCurrentPosition() - revolver_target) < REVOLVER_RANGE) || (revolver_target == 0)) {
                     if (custom_gamepad_2.get_dpad_right_just_pressed()) {
@@ -537,7 +476,7 @@ public class MainTeleOp extends LinearOpMode {
                             motor_powers.put("revolver", REVOLVER_FAST_SPEED);
                         }
                     }
-                    else if (custom_gamepad_2.get_a_just_pressed()) {
+                    else if ((actions[action_index] == 3) && (aimbot_shooting)) {
                         action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
 
                         revolver_distance_multiple = revolver_controller.shoot();
@@ -550,8 +489,9 @@ public class MainTeleOp extends LinearOpMode {
                                 motor_powers.put("revolver", REVOLVER_FAST_SPEED);
                             }
                         }
+                        action_index+=1;
                     }
-                    else if (custom_gamepad_2.get_b_just_pressed()) {
+                    else if (actions[action_index] == 7) {
                         action_map.put("revolver", (byte) (action_map.get("revolver") | ON_BITMASK));
 
                         revolver_distance_multiple = revolver_controller.intake();
@@ -564,6 +504,7 @@ public class MainTeleOp extends LinearOpMode {
                                 motor_powers.put("revolver", REVOLVER_FAST_SPEED);
                             }
                         }
+                        action_index+=1;
                     }
                     else {
                         action_map.put("revolver", (byte) (action_map.get("revolver") & (~ON_BITMASK)));
@@ -590,107 +531,40 @@ public class MainTeleOp extends LinearOpMode {
             telemetry.addData("Revolver 4:", revolver_controller.balls[4]);
             telemetry.addData("Revolver 5:", revolver_controller.balls[5]);
 
-            //Manual turret control
-            if (check_mask("turret")) {
-                if (custom_gamepad_2.get_right_bumper()) {
-                    action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
-                    motor_powers.put("turret", MAX_TURRET_SPEED);
-                }
-                else if (custom_gamepad_2.get_left_bumper()) {
-                    action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
-                    motor_powers.put("turret", -MAX_TURRET_SPEED);
-                }
-                else {
-                    action_map.put("turret", (byte) (action_map.get("turret") & (~ON_BITMASK)));
-                    motor_powers.put("turret", 0.0);
-                }
-            }
-
-            //Auto turret aiming
-            telemetry.addData("Turret Pos (%):", motors.get("turret").getCurrentPosition()/MAX_TURRET_ROTATION*100);
-            if (check_mask("turret") && (flywheel_rpm <= 1000)) {
+            if (actions[action_index] == 1) {
+                action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
                 if (tagProcessor.getDetections().size() > 0) {
                     try {
                         tag = tagProcessor.getDetections().get(0);
                     } catch (Exception e) {
                         continue;
                     }
-
                     if ((tag.id >= 21) && (tag.id <= 23)) {
                         revolver_controller.set_pattern(tag.id);
-                    }
-
-                    telemetry.addLine("Detection");
-                    if ((((double)(System.nanoTime() - tag.frameAcquisitionNanoTime)) < APRIL_TAG_PERMITTED_DELAY*1000000000) && (tag.id == (alliance ? 24 : 20))) {
-                        tag_bearing = tag.ftcPose.bearing;
-                        if ((tag_bearing < -BEARING_RANGE)) {
-                            telemetry.addLine("Tracking");
-                            if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) < (MAX_TURRET_ROTATION*0.95)) {
-                                motor_powers.put("turret", -(Math.abs(tag_bearing/50)*(MAX_TURRET_SPEED-MIN_TURRET_SPEED) + MIN_TURRET_SPEED));
-                            }
-                            else {
-                                sweeping = -1;
-                            }
-                        }
-                        else if ((tag_bearing > BEARING_RANGE)) {
-                            telemetry.addLine("Tracking");
-                            if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
-                                motor_powers.put("turret", (Math.abs(tag_bearing/50)*(MAX_TURRET_SPEED-MIN_TURRET_SPEED) + MIN_TURRET_SPEED));
-                            }
-                            else {
-                                sweeping = 1;
-                            }
-                        }
-                        else {
-                            motor_powers.put("turret", 0.0);
-                            sweeping = 0;
-                        }
-                    }
-                    else if (sweeping == 0) {
-                        telemetry.addLine("No Detection");
-                        telemetry.addLine("Sweeping");
-                        if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > MAX_TURRET_ROTATION/10) {
-                            sweeping = 1;
-                        }
-                        else {
-                            sweeping = -1;
-                        }
+                        action_index+=1;
+                        action_map.put("turret", (byte) (action_map.get("turret") & (~ON_BITMASK)));
                     }
                 }
-                else if (sweeping == 0){
-                    telemetry.addLine("No Detection");
-                    telemetry.addLine("Sweeping");
-                    if (sweeping == 0) {
-                        if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > MAX_TURRET_ROTATION / 10) {
-                            sweeping = 1;
-                        } else {
-                            sweeping = -1;
-                        }
-                    }
+                else if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
+                    motor_powers.put("turret", -(MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
                 }
-
-                if (sweeping == 1) {
-                    telemetry.addLine("Sweeping");
-                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) < (MAX_TURRET_ROTATION*0.95)) {
-                        motor_powers.put("turret", (MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
-                    }
-                    else {
-                        sweeping = -1;
-                    }
+                else {
+                    motor_powers.put("turret", 0.0);
                 }
-                else if (sweeping == -1) {
-                    telemetry.addLine("Sweeping");
-                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
-                        motor_powers.put("turret", -(MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
-                    }
-                    else {
-                        sweeping = 1;
-                    }
+            }
+            if (actions[action_index] == 8) {
+                action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
+                if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
+                    motor_powers.put("turret", (MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
+                }
+                else {
+                    motor_powers.put("turret", 0.0);
+                    action_index+=1;
                 }
             }
 
             //Check for aimbot macro (EVAN CHANGED the button FROM gamepad2 to 1)
-            if ((custom_gamepad_2.get_dpad_up() || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
+            if (((actions[action_index] == 2) || (action_map.get("aimbot") < 0)) && check_mask("aimbot")) {
                 //If this is fresh
                 if (action_map.get("aimbot") > 0) {
                     action_map.put("aimbot", (byte) (action_map.get("aimbot") | ON_BITMASK));
@@ -698,6 +572,7 @@ public class MainTeleOp extends LinearOpMode {
                     rpm_error_integral_val = 0;
                     rpm_previous_error = 0;
                     aimbot_shooting = false;
+                    action_index += 1;
 
                     aimbot_flywheel_power = 0;
                 }
@@ -715,7 +590,9 @@ public class MainTeleOp extends LinearOpMode {
                             telemetry.addData("ID", tag.metadata.id);
                             tag_bearing = tag.ftcPose.bearing;
                             tag_elevation = tag.ftcPose.elevation;
-                            tag_range = tag.ftcPose.range;
+                            if (tag.ftcPose.range > 0) {
+                                tag_range = tag.ftcPose.range;
+                            }
                             telemetry.addData("Bearing:", tag_bearing*(180/Math.PI));
 
                             //Get the flywheel running and PID this motherfucker (XD alright)
@@ -751,8 +628,8 @@ public class MainTeleOp extends LinearOpMode {
                             telemetry.addData("Exit Velocity", exit_velocity/100);
                             telemetry.addData("RPM Error", flywheel_rpm_error);
                             telemetry.addData("Flywheel Power", aimbot_flywheel_power);
-
-                            if (((tag_bearing > -BEARING_RANGE) && (tag_bearing > -BEARING_RANGE) && (Math.abs(flywheel_rpm_error) < FLYWHEEL_RPM_ERROR_RANGE)) || (aimbot_shooting)) {
+                            //We're rotated too far left
+                            if (((tag_bearing > -BEARING_RANGE) && (tag_bearing > -BEARING_RANGE) && (flywheel_rpm_error < FLYWHEEL_RPM_ERROR_RANGE)) || (aimbot_shooting)) {
                                 telemetry.addLine("Shooting");
                                 aimbot_macro_yaw = 0;
                                 aimbot_shooting = true;
@@ -765,57 +642,28 @@ public class MainTeleOp extends LinearOpMode {
                     }
                 }
             }
-            if (custom_gamepad_2.get_dpad_down()) {
+            if (actions[action_index] == 5) {
+                //Turn off macro
                 //Turn off macro
                 action_map.put("aimbot", (byte) (action_map.get("aimbot") & (~ON_BITMASK)));
                 aimbot_shooting = false;
                 aimbot_flywheel_power = 0;
+                action_index += 1;
             }
 
-            if (custom_gamepad_2.get_right_bumper()) {
-                action_map.put("turret", (byte) (action_map.get("turret") | ON_BITMASK));
-                if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
-                    motor_powers.put("turret", (MAX_TURRET_SPEED+MIN_TURRET_SPEED)/4);
+            //Manual flicker control gamepad1
+            if (check_mask("flicker")) {
+                if (actions[action_index] == 4) {
+                    action_map.put("flicker", (byte) (action_map.get("flicker") | ON_BITMASK));
+                    servo_positions.put("flicker", flicker_up_pos);
+                    revolver_controller.remove_ball();
+                    action_index+=1;
                 }
-                else {
-                    motor_powers.put("turret", 0.0);
-                    turret_starting_pos = motors.get("turret").getCurrentPosition();
+                else if (actions[action_index] == 8){
+                    action_map.put("flicker", (byte) (action_map.get("flicker") & (~ON_BITMASK)));
+                    servo_positions.put("flicker", flicker_down_pos);
+                    action_index+=1;
                 }
-            }
-
-            //Execute state actions
-            //This checks if msb is set
-            if (action_map.get("manual_movement") < 0) {
-                //Check which yaw we're using (if any)
-                if (action_map.get("trigger_rotation") < 0) {
-                    yaw = trigger_yaw;
-                }
-                else if (action_map.get("stick_rotation") < 0) {
-                    yaw = stick_yaw;
-                }
-                else {
-                    yaw = 0;
-                }
-
-                if (yaw > 0) {
-                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) < (MAX_TURRET_ROTATION*0.95)) {
-                        motor_powers.put("turret", motor_powers.get("turret")+(yaw*ROTATION_TURRET_CONVERSION));
-                    }
-                }
-                else if (yaw < 0) {
-                    if ((motors.get("turret").getCurrentPosition() - turret_starting_pos) > (MAX_TURRET_ROTATION*0.05)) {
-                        motor_powers.put("turret", motor_powers.get("turret")+(yaw*ROTATION_TURRET_CONVERSION));
-                    }
-                    else {
-                        sweeping = 1;
-                    }
-                }
-
-                //Set engine powers
-                motor_powers.put("front_left", (axial + lateral + yaw)*movement_speed);
-                motor_powers.put("front_right", (axial - lateral - yaw)*movement_speed);
-                motor_powers.put("back_left", (axial - lateral + yaw)*movement_speed);
-                motor_powers.put("back_right", (axial + lateral - yaw)*movement_speed);
             }
 
             //Execute aimbot macro
@@ -828,19 +676,6 @@ public class MainTeleOp extends LinearOpMode {
                 motor_powers.put("flywheel", aimbot_flywheel_power);
 
                 motor_powers.put("intake", aimbot_intake_power);
-            }
-
-            if (custom_gamepad_1.get_b()) {
-                if (m_csvLogString.length() > 0) {
-                    String csvPath = String.format("%s/FIRST/data/flywheel_data_.csv", Environment.getExternalStorageDirectory().getAbsolutePath());
-                    try (FileWriter csvWriter = new FileWriter(csvPath, false)) {
-                        csvWriter.write(m_csvLogString.toString());
-                    } catch (IOException e) {
-                        telemetry.addLine(e.getMessage());
-                        telemetry.update();
-                    }
-                }
-                sleep(5000);
             }
 
             //Execute powers
